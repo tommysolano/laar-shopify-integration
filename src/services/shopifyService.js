@@ -47,7 +47,13 @@ class ShopifyService {
       
       return response.data.data;
     } catch (error) {
-      logger.error('GraphQL request failed:', error.response?.data || error.message);
+      const errorDetails = {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      };
+      logger.error('GraphQL request failed:', errorDetails);
       throw error;
     }
   }

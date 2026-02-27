@@ -16,7 +16,7 @@ const config = {
     storeDomain: process.env.SHOPIFY_STORE_DOMAIN,
     adminToken: process.env.SHOPIFY_ADMIN_TOKEN,
     webhookSecret: process.env.SHOPIFY_WEBHOOK_SECRET,
-    apiVersion: '2024-01'
+    apiVersion: '2025-10'
   },
   
   // LAAR Courier
