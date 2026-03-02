@@ -167,8 +167,12 @@ class LaarService {
       .substring(0, 200); // Limit length
     
     // Get phone from shipping address or customer
-    const phone = shipping.phone || customer.phone || '0999999999';
-    const cleanPhone = phone.replace(/[^0-9]/g, '').substring(0, 10) || '0999999999';
+    const rawPhone = shipping.phone || customer.phone || '';
+    const phone = rawPhone.replace(/[^0-9]/g, '').substring(0, 10);
+    
+    if (!phone || phone.length < 7) {
+      throw new Error(`Missing or invalid phone number in order. Raw phone: "${rawPhone}"`);
+    }
     
     // Build full address
     const address1 = shipping.address1 || '';
@@ -201,8 +205,8 @@ class LaarService {
         direccionD: fullAddress,
         referenciaD: reference.substring(0, 200),
         ciudadD: config.defaults.originCityCode, // TODO: Map Shopify locations to LAAR city codes
-        telefonoD: cleanPhone,
-        celularD: cleanPhone,
+        telefonoD: phone,
+        celularD: phone,
         correoD: order.email || customer.email || ''
       },
       

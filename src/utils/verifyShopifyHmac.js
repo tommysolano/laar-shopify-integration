@@ -13,9 +13,11 @@ export function verifyShopifyHmac(rawBody, hmacHeader) {
     return false;
   }
   
-  const secret = config.shopify.webhookSecret;
+  // For OAuth apps, webhooks are signed with client_secret
+  // For custom apps, use SHOPIFY_WEBHOOK_SECRET
+  const secret = config.shopify.clientSecret || config.shopify.webhookSecret;
   if (!secret) {
-    throw new Error('SHOPIFY_WEBHOOK_SECRET is not configured');
+    throw new Error('No webhook secret configured (SHOPIFY_CLIENT_SECRET or SHOPIFY_WEBHOOK_SECRET)');
   }
   
   // Ensure rawBody is a Buffer or string
