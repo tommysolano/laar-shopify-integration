@@ -78,7 +78,7 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     
     // Step 2: Build and create LAAR guide
     logger.info('Creating LAAR guide...', { orderId });
-    const guidePayload = laarService.buildGuidePayload(order);
+    const guidePayload = await laarService.buildGuidePayload(order);
     logger.info('LAAR guide payload: ' + JSON.stringify(guidePayload));
     const guideResult = await laarService.createGuide(guidePayload);
     
