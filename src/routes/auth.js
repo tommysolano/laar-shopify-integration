@@ -20,6 +20,49 @@ const SCOPES = [
 ].join(',');
 
 /**
+ * Register webhooks via Shopify Admin API
+ */
+async function registerWebhooks(shop, accessToken) {
+  const webhooks = [
+    {
+      topic: 'orders/paid',
+      address: `${config.shopify.appUrl}/webhooks/orders_paid`,
+      format: 'json'
+    }
+  ];
+
+  const results = [];
+
+  for (const webhook of webhooks) {
+    try {
+      const response = await axios.post(
+        `https://${shop}/admin/api/2024-01/webhooks.json`,
+        { webhook },
+        {
+          headers: {
+            'X-Shopify-Access-Token': accessToken,
+            'Content-Type': 'application/json'
+          }
+        }
+      );
+      logger.info(`✅ Webhook registered: ${webhook.topic} -> ${webhook.address}`);
+      results.push({ topic: webhook.topic, success: true, id: response.data.webhook.id });
+    } catch (error) {
+      // Check if webhook already exists
+      if (error.response?.status === 422) {
+        logger.info(`Webhook ${webhook.topic} already exists, skipping`);
+        results.push({ topic: webhook.topic, success: true, alreadyExists: true });
+      } else {
+        logger.error(`Failed to register webhook ${webhook.topic}:`, error.response?.data || error.message);
+        results.push({ topic: webhook.topic, success: false, error: error.message });
+      }
+    }
+  }
+
+  return results;
+}
+
+/**
  * Generate a random nonce for OAuth state
  */
 function generateNonce() {
@@ -161,6 +204,12 @@ router.get('/callback', async (req, res) => {
     // Store the token
     tokenStorage.setToken(shop, access_token, scope);
     
+    // Register webhooks automatically
+    logger.info('Registering webhooks...');
+    const webhookResults = await registerWebhooks(shop, access_token);
+    const allWebhooksOk = webhookResults.every(r => r.success);
+    const webhookStatus = allWebhooksOk ? '✅ Webhooks registrados' : '⚠️ Algunos webhooks fallaron';
+    
     // Redirect to success page or app - show token for copying to env var
     res.send(`
       <!DOCTYPE html>
@@ -194,6 +243,7 @@ router.get('/callback', async (req, res) => {
           <h1>¡Instalación Exitosa!</h1>
           <p>LAAR Courier Integration se ha conectado correctamente a tu tienda.</p>
           <p><strong>${shop}</strong></p>
+          <p style="margin-top: 10px; color: ${allWebhooksOk ? '#008060' : '#ff9800'};">${webhookStatus}</p>
           
           <div class="instructions">
             <strong>⚠️ IMPORTANTE - Guarda este token:</strong>
