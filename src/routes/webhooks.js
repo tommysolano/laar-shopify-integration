@@ -43,6 +43,9 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     email: order.email 
   });
   
+  // Log shipping address for debugging
+  logger.info('Shipping address:', JSON.stringify(order.shipping_address || order.shippingAddress || 'No shipping address'));
+  
   try {
     // Step 1: Check for existing guide (idempotency)
     logger.info('Checking for existing LAAR guide...', { orderId });
@@ -64,6 +67,7 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     // Step 2: Build and create LAAR guide
     logger.info('Creating LAAR guide...', { orderId });
     const guidePayload = laarService.buildGuidePayload(order);
+    logger.info('LAAR guide payload:', JSON.stringify(guidePayload));
     const guideResult = await laarService.createGuide(guidePayload);
     
     const { guia, pdfUrl } = guideResult;

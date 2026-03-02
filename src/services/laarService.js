@@ -136,11 +136,16 @@ class LaarService {
       
       logger.error('LAAR guide creation failed:', {
         status: error.response?.status,
-        data: error.response?.data,
+        data: JSON.stringify(error.response?.data),
         message: error.message
       });
       
-      throw new Error(`LAAR guide creation failed: ${error.response?.data?.message || error.message}`);
+      // Log the full error data for debugging
+      if (error.response?.data) {
+        logger.error('LAAR error details: ' + JSON.stringify(error.response.data));
+      }
+      
+      throw new Error(`LAAR guide creation failed: ${error.response?.data?.message || JSON.stringify(error.response?.data) || error.message}`);
     }
   }
   
