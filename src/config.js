@@ -14,9 +14,13 @@ const config = {
   // Shopify
   shopify: {
     storeDomain: process.env.SHOPIFY_STORE_DOMAIN,
-    adminToken: process.env.SHOPIFY_ADMIN_TOKEN,
+    adminToken: process.env.SHOPIFY_ADMIN_TOKEN, // Optional: fallback for OAuth token
     webhookSecret: process.env.SHOPIFY_WEBHOOK_SECRET,
-    apiVersion: '2025-10'
+    apiVersion: '2025-10',
+    // OAuth credentials (from Dev Dashboard / Partner)
+    clientId: process.env.SHOPIFY_CLIENT_ID,
+    clientSecret: process.env.SHOPIFY_CLIENT_SECRET,
+    appUrl: process.env.APP_URL || 'https://laar-shopify-integration.onrender.com'
   },
   
   // LAAR Courier
@@ -51,7 +55,8 @@ const config = {
 export function validateConfig() {
   const required = [
     { key: 'SHOPIFY_STORE_DOMAIN', value: config.shopify.storeDomain },
-    { key: 'SHOPIFY_ADMIN_TOKEN', value: config.shopify.adminToken },
+    { key: 'SHOPIFY_CLIENT_ID', value: config.shopify.clientId },
+    { key: 'SHOPIFY_CLIENT_SECRET', value: config.shopify.clientSecret },
     { key: 'SHOPIFY_WEBHOOK_SECRET', value: config.shopify.webhookSecret },
     { key: 'LAAR_USERNAME', value: config.laar.username },
     { key: 'LAAR_PASSWORD', value: config.laar.password }

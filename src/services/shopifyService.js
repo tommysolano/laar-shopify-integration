@@ -1,5 +1,6 @@
 import axios from 'axios';
 import config from '../config.js';
+import { tokenStorage } from './tokenStorage.js';
 import { createLogger } from '../utils/logger.js';
 
 const logger = createLogger('shopify-service');
@@ -7,12 +8,15 @@ const logger = createLogger('shopify-service');
 /**
  * Shopify Admin API Service
  * Uses GraphQL for metafields and fulfillment operations
+ * 
+ * Token resolution order:
+ * 1. OAuth token from tokenStorage (obtained via /auth flow)
+ * 2. Fallback to SHOPIFY_ADMIN_TOKEN env var (for backwards compatibility)
  */
 class ShopifyService {
   constructor() {
     this.storeDomain = config.shopify.storeDomain;
     this.apiVersion = config.shopify.apiVersion;
-    this.adminToken = config.shopify.adminToken;
     
     // GraphQL endpoint
     this.graphqlUrl = `https://${this.storeDomain}/admin/api/${this.apiVersion}/graphql.json`;
@@ -20,24 +24,61 @@ class ShopifyService {
     // REST endpoint base
     this.restBaseUrl = `https://${this.storeDomain}/admin/api/${this.apiVersion}`;
     
-    // Create axios instance
+    // Create axios instance (token will be set per-request)
     this.client = axios.create({
       timeout: 30000,
       headers: {
-        'Content-Type': 'application/json',
-        'X-Shopify-Access-Token': this.adminToken
+        'Content-Type': 'application/json'
       }
     });
+  }
+  
+  /**
+   * Get the access token for the configured store
+   * Checks OAuth storage first, then falls back to env var
+   * @returns {string} - Access token
+   * @throws {Error} - If no token is available
+   */
+  getAccessToken() {
+    // Try OAuth token first
+    const oauthToken = tokenStorage.getToken(this.storeDomain);
+    if (oauthToken) {
+      return oauthToken;
+    }
+    
+    // Fallback to env var token
+    if (config.shopify.adminToken) {
+      return config.shopify.adminToken;
+    }
+    
+    throw new Error(
+      `No access token available for ${this.storeDomain}. ` +
+      `Please authenticate at /auth?shop=${this.storeDomain}`
+    );
+  }
+  
+  /**
+   * Check if the store has a valid token
+   * @returns {boolean}
+   */
+  hasValidToken() {
+    return tokenStorage.hasToken(this.storeDomain) || !!config.shopify.adminToken;
   }
   
   /**
    * Execute GraphQL query
    */
   async graphql(query, variables = {}) {
+    const token = this.getAccessToken();
+    
     try {
       const response = await this.client.post(this.graphqlUrl, {
         query,
         variables
+      }, {
+        headers: {
+          'X-Shopify-Access-Token': token
+        }
       });
       
       if (response.data.errors) {

@@ -4,6 +4,8 @@ import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
 import config, { validateConfig } from './config.js';
 import webhooksRouter from './routes/webhooks.js';
+import authRouter from './routes/auth.js';
+import { tokenStorage } from './services/tokenStorage.js';
 import { createLogger } from './utils/logger.js';
 
 const logger = createLogger('server');
@@ -68,6 +70,25 @@ app.get('/', (req, res) => {
 // Webhook routes
 app.use('/webhooks', webhooksRouter);
 
+// Auth routes (OAuth flow)
+app.use('/auth', authRouter);
+
+// Token status endpoint
+app.get('/token-status', (req, res) => {
+  const shop = config.shopify.storeDomain;
+  const hasToken = tokenStorage.hasToken(shop);
+  const tokenData = tokenStorage.getTokenData(shop);
+  
+  res.json({
+    shop,
+    authenticated: hasToken,
+    installedAt: tokenData?.installedAt || null,
+    message: hasToken 
+      ? 'App is authenticated and ready' 
+      : `Please authenticate at /auth?shop=${shop}`
+  });
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
@@ -90,6 +111,15 @@ app.listen(PORT, () => {
   logger.info(`   Environment: ${config.nodeEnv}`);
   logger.info(`   Health check: http://localhost:${PORT}/health`);
   logger.info(`   Webhook endpoint: http://localhost:${PORT}/webhooks/orders_paid`);
+  logger.info(`   Auth endpoint: http://localhost:${PORT}/auth?shop=${config.shopify.storeDomain}`);
+  
+  // Check if store is already authenticated
+  const hasToken = tokenStorage.hasToken(config.shopify.storeDomain);
+  if (hasToken) {
+    logger.info(`✅ Store ${config.shopify.storeDomain} is authenticated`);
+  } else {
+    logger.warn(`⚠️  Store not authenticated. Visit: ${config.shopify.appUrl}/auth?shop=${config.shopify.storeDomain}`);
+  }
   
   if (config.isDevelopment && config.allowInsecureWebhooks) {
     logger.warn('⚠️  INSECURE MODE: HMAC verification is disabled!');

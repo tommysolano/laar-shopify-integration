@@ -1,0 +1,3 @@
+# Ignore token storage files (contain sensitive data)
+tokens.json
+*.json
