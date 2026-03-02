@@ -161,7 +161,7 @@ router.get('/callback', async (req, res) => {
     // Store the token
     tokenStorage.setToken(shop, access_token, scope);
     
-    // Redirect to success page or app
+    // Redirect to success page or app - show token for copying to env var
     res.send(`
       <!DOCTYPE html>
       <html>
@@ -172,10 +172,20 @@ router.get('/callback', async (req, res) => {
                  display: flex; justify-content: center; align-items: center; 
                  min-height: 100vh; margin: 0; background: #f6f6f7; }
           .container { text-align: center; padding: 40px; background: white; 
-                       border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+                       border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); max-width: 600px; }
           h1 { color: #008060; }
           p { color: #637381; }
           .checkmark { font-size: 48px; margin-bottom: 20px; }
+          .token-box { background: #1a1a2e; color: #00ff88; padding: 15px; border-radius: 6px; 
+                       font-family: monospace; font-size: 12px; word-break: break-all; 
+                       margin: 20px 0; text-align: left; }
+          .copy-btn { background: #008060; color: white; border: none; padding: 10px 20px; 
+                      border-radius: 4px; cursor: pointer; font-size: 14px; margin-top: 10px; }
+          .copy-btn:hover { background: #006e52; }
+          .instructions { background: #fff8e6; border: 1px solid #ffcc00; padding: 15px; 
+                          border-radius: 6px; text-align: left; margin-top: 20px; }
+          .instructions ol { margin: 10px 0; padding-left: 20px; }
+          .instructions li { margin: 5px 0; color: #333; }
         </style>
       </head>
       <body>
@@ -184,10 +194,36 @@ router.get('/callback', async (req, res) => {
           <h1>¡Instalación Exitosa!</h1>
           <p>LAAR Courier Integration se ha conectado correctamente a tu tienda.</p>
           <p><strong>${shop}</strong></p>
-          <p style="margin-top: 20px; font-size: 14px;">
-            Puedes cerrar esta ventana y volver a tu tienda Shopify.
-          </p>
+          
+          <div class="instructions">
+            <strong>⚠️ IMPORTANTE - Guarda este token:</strong>
+            <p>Copia este Access Token y agrégalo como variable de entorno en Render para que persista entre reinicios.</p>
+          </div>
+          
+          <div class="token-box" id="token">${access_token}</div>
+          <button class="copy-btn" onclick="copyToken()">📋 Copiar Token</button>
+          
+          <div class="instructions">
+            <strong>Pasos en Render:</strong>
+            <ol>
+              <li>Ve a tu servicio en Render Dashboard</li>
+              <li>Ve a Environment → Add Environment Variable</li>
+              <li>Nombre: <code>SHOPIFY_ACCESS_TOKEN</code></li>
+              <li>Valor: (pega el token copiado)</li>
+              <li>Click "Save Changes"</li>
+            </ol>
+          </div>
         </div>
+        <script>
+          function copyToken() {
+            const token = document.getElementById('token').innerText;
+            navigator.clipboard.writeText(token).then(() => {
+              const btn = document.querySelector('.copy-btn');
+              btn.textContent = '✅ ¡Copiado!';
+              setTimeout(() => btn.textContent = '📋 Copiar Token', 2000);
+            });
+          }
+        </script>
       </body>
       </html>
     `);

@@ -15,12 +15,32 @@ const TOKENS_FILE = process.env.TOKENS_FILE_PATH || path.join(__dirname, '../../
 /**
  * Simple token storage for OAuth tokens
  * Stores tokens in a JSON file for persistence across restarts
+ * Also supports SHOPIFY_ACCESS_TOKEN env var as fallback
  */
 class TokenStorage {
   constructor() {
     this.tokens = {};
     this.ensureDataDirectory();
     this.loadTokens();
+    this.loadFromEnv(); // Load from environment variable if available
+  }
+
+  /**
+   * Load token from environment variable (fallback for Render free tier)
+   */
+  loadFromEnv() {
+    const envToken = process.env.SHOPIFY_ACCESS_TOKEN;
+    const shopDomain = process.env.SHOPIFY_STORE_DOMAIN;
+    
+    if (envToken && shopDomain && !this.tokens[shopDomain]) {
+      this.tokens[shopDomain] = {
+        accessToken: envToken,
+        scope: 'from-env',
+        installedAt: 'from-env',
+        updatedAt: new Date().toISOString()
+      };
+      logger.info(`Loaded token from SHOPIFY_ACCESS_TOKEN env var for ${shopDomain}`);
+    }
   }
 
   /**
