@@ -186,28 +186,32 @@ class LaarService {
     const totalPrice = parseFloat(order.current_total_price || order.total_price || 0);
     
     const payload = {
-      // Origin data (from config)
+      // Origin data (from config) - field names per LAAR API docs
       origen: {
         identificacionO: config.defaults.origin.identificacionO,
-        nombreO: config.defaults.origin.nombreO,
-        direccionO: config.defaults.origin.direccionO,
-        referenciaO: config.defaults.origin.referenciaO,
         ciudadO: config.defaults.origin.ciudadO,
-        telefonoO: config.defaults.origin.telefonoO,
-        celularO: config.defaults.origin.celularO,
-        correoO: config.defaults.origin.correoO
+        nombreO: config.defaults.origin.nombreO,
+        direccion: config.defaults.origin.direccionO,
+        referencia: config.defaults.origin.referenciaO,
+        numeroCasa: '',
+        postal: '',
+        telefono: config.defaults.origin.telefonoO,
+        celular: config.defaults.origin.celularO
       },
       
-      // Destination data (from order)
+      // Destination data (from order) - field names per LAAR API docs
       destino: {
         identificacionD: '9999999999', // Default if not provided
-        nombreD: shipping.name || `${shipping.first_name || ''} ${shipping.last_name || ''}`.trim() || 'Cliente',
-        direccionD: fullAddress,
-        referenciaD: reference.substring(0, 200),
         ciudadD: config.defaults.originCityCode, // TODO: Map Shopify locations to LAAR city codes
-        telefonoD: phone,
-        celularD: phone,
-        correoD: order.email || customer.email || ''
+        nombreD: shipping.name || `${shipping.first_name || ''} ${shipping.last_name || ''}`.trim() || 'Cliente',
+        direccion: fullAddress,
+        referencia: reference.substring(0, 200),
+        numeroCasa: '',
+        postal: shipping.zip || '',
+        telefono: phone,
+        celular: phone,
+        latitud: shipping.latitude ? String(shipping.latitude) : '',
+        longitud: shipping.longitude ? String(shipping.longitude) : ''
       },
       
       // Guide details
