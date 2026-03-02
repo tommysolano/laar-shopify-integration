@@ -13,11 +13,10 @@ export function verifyShopifyHmac(rawBody, hmacHeader) {
     return false;
   }
   
-  // For OAuth apps, webhooks are signed with client_secret
-  // For custom apps, use SHOPIFY_WEBHOOK_SECRET
-  const secret = config.shopify.clientSecret || config.shopify.webhookSecret;
+  // Webhooks are signed with SHOPIFY_WEBHOOK_SECRET (even for OAuth apps)
+  const secret = config.shopify.webhookSecret || config.shopify.clientSecret;
   if (!secret) {
-    throw new Error('No webhook secret configured (SHOPIFY_CLIENT_SECRET or SHOPIFY_WEBHOOK_SECRET)');
+    throw new Error('No webhook secret configured (SHOPIFY_WEBHOOK_SECRET or SHOPIFY_CLIENT_SECRET)');
   }
   
   // Ensure rawBody is a Buffer or string
@@ -58,23 +57,12 @@ export function verifyShopifyHmacMiddleware(req, res, next) {
     return;
   }
   
-  // Debug: log which secret is being used
-  const secretUsed = config.shopify.clientSecret ? 'clientSecret' : 'webhookSecret';
-  console.log(`HMAC verification using: ${secretUsed}`);
-  console.log(`HMAC header received: ${hmacHeader ? hmacHeader.substring(0, 20) + '...' : 'NONE'}`);
-  
   if (!verifyShopifyHmac(req.body, hmacHeader)) {
     console.error('❌ Invalid HMAC signature');
-    // Try with the other secret as fallback
-    const altSecret = config.shopify.clientSecret ? config.shopify.webhookSecret : config.shopify.clientSecret;
-    if (altSecret) {
-      const body = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body, 'utf8');
-      const altHmac = crypto.createHmac('sha256', altSecret).update(body).digest('base64');
-      console.log(`Alt secret HMAC would be: ${altHmac.substring(0, 20)}...`);
-    }
     return res.status(401).json({ error: 'Invalid HMAC signature' });
   }
   
+  console.log('✅ HMAC signature verified');
   next();
 }
 
