@@ -91,7 +91,7 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     
     // Step 4: Create fulfillment with tracking
     logger.info('Creating fulfillment...', { orderId, guia });
-    const trackingUrl = pdfUrl || `https://api.laarcourier.com/tracking/${guia}`;
+    const trackingUrl = `https://fenix.laarcourier.com/Tracking/?guia=${guia}`;
     
     try {
       const fulfillment = await shopifyService.createFulfillment(orderId, guia, trackingUrl);

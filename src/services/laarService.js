@@ -272,7 +272,7 @@ class LaarService {
     }
     
     // Get customer identification (cédula/RUC) - REQUIRED
-    // Search in multiple places where it might be stored
+    // Está almacenada en las notas del pedido
     let identificacion = null;
     
     // 1. Check note_attributes (custom checkout fields)
@@ -287,35 +287,26 @@ class LaarService {
       identificacion = cedulaAttr.value.replace(/[^0-9]/g, '');
     }
     
-    // 2. Check order notes for cédula pattern
+    // 2. Check order notes (campo de notas del pedido)
     if (!identificacion && order.note) {
+      // Primero: buscar con label (ej: "cedula: 1712345678")
       const cedulaMatch = order.note.match(/(?:cedula|cédula|ruc|ci)[:\s]*([0-9]{10,13})/i);
       if (cedulaMatch) {
         identificacion = cedulaMatch[1];
-      }
-    }
-    
-    // 3. Check billing company (some stores use this for RUC)
-    if (!identificacion && billing.company) {
-      const companyNumbers = billing.company.replace(/[^0-9]/g, '');
-      if (companyNumbers.length >= 10) {
-        identificacion = companyNumbers;
-      }
-    }
-    
-    // 4. Check shipping company
-    if (!identificacion && shipping.company) {
-      const companyNumbers = shipping.company.replace(/[^0-9]/g, '');
-      if (companyNumbers.length >= 10) {
-        identificacion = companyNumbers;
+      } else {
+        // Segundo: buscar un número de 10-13 dígitos directamente en la nota
+        const numberMatch = order.note.match(/\b([0-9]{10,13})\b/);
+        if (numberMatch) {
+          identificacion = numberMatch[1];
+        }
       }
     }
     
     if (!identificacion || identificacion.length < 10) {
       throw new Error(
         `Missing customer identification (cédula/RUC) in order. ` +
-        `Please ensure the checkout collects this information. ` +
-        `Searched in: note_attributes, order notes, billing company, shipping company. ` +
+        `La cédula/RUC debe estar en las notas del pedido. ` +
+        `Searched in: note_attributes, order notes. ` +
         `Order note: "${order.note || 'empty'}"`
       );
     }

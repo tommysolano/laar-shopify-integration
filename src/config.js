@@ -31,20 +31,17 @@ const config = {
     tokenExpirationMinutes: parseInt(process.env.LAAR_TOKEN_EXPIRATION_MINUTES || '55', 10)
   },
   
-  // Default values for shipping
+  // Datos de origen (remitente) - SIN valores por defecto, deben configurarse en .env
   defaults: {
-    originCityCode: process.env.DEFAULT_ORIGIN_CITY_CODE || '201001001001',
-    serviceCode: process.env.DEFAULT_SERVICE_CODE || '201202002002013',
-    // Origin data (can be customized via env)
+    serviceCode: process.env.DEFAULT_SERVICE_CODE,
     origin: {
-      identificacionO: process.env.ORIGIN_IDENTIFICACION || '0999999999',
-      nombreO: process.env.ORIGIN_NOMBRE || 'Mi Tienda',
-      direccionO: process.env.ORIGIN_DIRECCION || 'Dirección de origen',
+      identificacionO: process.env.ORIGIN_IDENTIFICACION,
+      nombreO: process.env.ORIGIN_NOMBRE,
+      direccionO: process.env.ORIGIN_DIRECCION,
       referenciaO: process.env.ORIGIN_REFERENCIA || '',
-      ciudadO: process.env.ORIGIN_CIUDAD || process.env.DEFAULT_ORIGIN_CITY_CODE || '201001001001',
-      telefonoO: process.env.ORIGIN_TELEFONO || '0999999999',
-      celularO: process.env.ORIGIN_CELULAR || '0999999999',
-      correoO: process.env.ORIGIN_CORREO || 'tienda@example.com'
+      ciudadO: process.env.ORIGIN_CIUDAD,
+      telefonoO: process.env.ORIGIN_TELEFONO,
+      celularO: process.env.ORIGIN_CELULAR
     }
   }
 };
@@ -59,7 +56,14 @@ export function validateConfig() {
     { key: 'SHOPIFY_CLIENT_SECRET', value: config.shopify.clientSecret },
     { key: 'SHOPIFY_WEBHOOK_SECRET', value: config.shopify.webhookSecret },
     { key: 'LAAR_USERNAME', value: config.laar.username },
-    { key: 'LAAR_PASSWORD', value: config.laar.password }
+    { key: 'LAAR_PASSWORD', value: config.laar.password },
+    { key: 'DEFAULT_SERVICE_CODE', value: config.defaults.serviceCode },
+    { key: 'ORIGIN_IDENTIFICACION', value: config.defaults.origin.identificacionO },
+    { key: 'ORIGIN_NOMBRE', value: config.defaults.origin.nombreO },
+    { key: 'ORIGIN_DIRECCION', value: config.defaults.origin.direccionO },
+    { key: 'ORIGIN_CIUDAD', value: config.defaults.origin.ciudadO },
+    { key: 'ORIGIN_TELEFONO', value: config.defaults.origin.telefonoO },
+    { key: 'ORIGIN_CELULAR', value: config.defaults.origin.celularO }
   ];
   
   const missing = required.filter(r => !r.value).map(r => r.key);
