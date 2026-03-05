@@ -44,14 +44,12 @@ class LaarService {
     logger.info('Authenticating with LAAR API...');
     
     try {
-      const response = await this.client.post('/authenticate', {
+      const response = await this.client.post('/api/Login/authenticate', {
         username: config.laar.username,
         password: config.laar.password
       });
       
-      // LAAR returns the token in the response
-      // Adjust based on actual API response structure
-      const token = response.data.token || response.data.access_token || response.data;
+      const token = response.data.token;
       
       if (!token || typeof token !== 'string') {
         throw new Error('Invalid token received from LAAR API');
@@ -100,7 +98,7 @@ class LaarService {
     
     try {
       logger.info('Fetching cities from LAAR API...');
-      const response = await this.client.get('/ciudades', {
+      const response = await this.client.get('/api/Ciudades/v1/ciudades', {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
@@ -135,14 +133,14 @@ class LaarService {
     
     // Try to find exact match first
     let match = cities.find(c => {
-      const laarCity = (c.nombre || c.ciudad || c.name || '').toLowerCase();
+      const laarCity = (c.nombre || '').toLowerCase();
       return laarCity === normalizedCity;
     });
     
     // If no exact match, try partial match
     if (!match) {
       match = cities.find(c => {
-        const laarCity = (c.nombre || c.ciudad || c.name || '').toLowerCase();
+        const laarCity = (c.nombre || '').toLowerCase();
         return laarCity.includes(normalizedCity) || normalizedCity.includes(laarCity);
       });
     }
@@ -150,8 +148,8 @@ class LaarService {
     // If still no match and we have province, try with province
     if (!match && normalizedProvince) {
       match = cities.find(c => {
-        const laarCity = (c.nombre || c.ciudad || c.name || '').toLowerCase();
-        const laarProv = (c.provincia || c.province || '').toLowerCase();
+        const laarCity = (c.nombre || '').toLowerCase();
+        const laarProv = (c.provincia || '').toLowerCase();
         return laarCity.includes(normalizedCity) && laarProv.includes(normalizedProvince);
       });
     }
@@ -162,7 +160,7 @@ class LaarService {
       throw new Error(`City "${cityName}" not found in LAAR system. Please verify the city name.`);
     }
     
-    const cityCode = match.codigo || match.code || match.id;
+    const cityCode = match.codigo;
     logger.info(`Found LAAR city: ${cityName} -> Code: ${cityCode}`);
     return String(cityCode);
   }
@@ -180,7 +178,7 @@ class LaarService {
     try {
       logger.info('Creating LAAR guide...', { orderId: guideData.extras?.Campo1 });
       
-      const response = await this.client.post('/guias/contado', guideData, {
+      const response = await this.client.post('/api/Guias/v1/guias/contado?isRetorno=false', guideData, {
         headers: {
           'Authorization': `Bearer ${token}`
         }
@@ -188,10 +186,9 @@ class LaarService {
       
       const result = response.data;
       
-      // Extract guide number and PDF URL from response
-      // Adjust based on actual LAAR API response structure
-      const guideNumber = result.numeroGuia || result.guia || result.numero;
-      const pdfUrl = result.urlPdf || result.pdfUrl || result.url_pdf;
+      // Response: { guia: "SISLC...", url: "https://...", zpl: null }
+      const guideNumber = result.guia;
+      const pdfUrl = result.url;
       
       if (!guideNumber) {
         logger.error('LAAR response missing guide number:', result);
@@ -271,9 +268,9 @@ class LaarService {
       throw new Error(`Missing or invalid phone number in order. Raw phone: "${rawPhone}"`);
     }
     
-    // Get customer identification (cédula/RUC) - REQUIRED
+    // Get customer identification (cédula/RUC) - OPCIONAL según LAAR
     // Está almacenada en las notas del pedido
-    let identificacion = null;
+    let identificacion = '';
     
     // 1. Check note_attributes (custom checkout fields)
     const cedulaAttr = noteAttributes.find(attr => 
@@ -302,13 +299,8 @@ class LaarService {
       }
     }
     
-    if (!identificacion || identificacion.length < 10) {
-      throw new Error(
-        `Missing customer identification (cédula/RUC) in order. ` +
-        `La cédula/RUC debe estar en las notas del pedido. ` +
-        `Searched in: note_attributes, order notes. ` +
-        `Order note: "${order.note || 'empty'}"`
-      );
+    if (!identificacion) {
+      logger.warn('No se encontró cédula/RUC en las notas del pedido. Continuando sin identificación.');
     }
     
     // Build full address
@@ -318,9 +310,6 @@ class LaarService {
     
     // Get reference from company, address2, or order note
     const reference = shipping.company || shipping.address2 || order.note || '';
-    
-    // Calculate total value
-    const totalPrice = parseFloat(order.current_total_price || order.total_price || 0);
     
     // Calculate total pieces (sum of all item quantities)
     const totalPieces = lineItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
@@ -346,14 +335,13 @@ class LaarService {
     
     logger.info('Building guide with customer data:', {
       customerName,
-      identificacion,
+      identificacion: identificacion || 'N/A',
       phone,
       city: cityName,
       cityCode,
       address: fullAddress,
       pieces: totalPieces,
-      weightKg: totalWeightKg,
-      value: totalPrice
+      weightKg: totalWeightKg
     });
     
     const payload = {
@@ -373,32 +361,49 @@ class LaarService {
       // Destination data (from customer order)
       destino: {
         identificacionD: identificacion,
-        ciudadD: cityCode, // LAAR city code from API lookup
+        ciudadD: cityCode,
         nombreD: customerName,
         direccion: fullAddress,
-        referencia: reference.substring(0, 200),
+        referencia: reference.substring(0, 225),
         numeroCasa: '',
         postal: shipping.zip || '',
         telefono: phone,
         celular: phone,
+        categoria: '',
         latitud: shipping.latitude ? String(shipping.latitude) : '',
         longitud: shipping.longitude ? String(shipping.longitude) : ''
       },
       
       // Guide details
-      numeroGuia: '', // LAAR generates this
+      numeroGuia: '',
       tipoServicio: config.defaults.serviceCode,
       noPiezas: totalPieces,
       peso: totalWeightKg,
-      valorDeclarado: totalPrice,
+      valorDeclarado: 0,
       contiene: contenido || 'Pedido Shopify',
+      tamanio: '',
+      cod: false,
+      costoflete: 0,
+      costoproducto: 0,
+      tipocobro: 0,
       comentario: `Shopify Order #${order.name || order.order_number || order.id}`,
+      fechaPedido: '',
+      
+      // Retorno (no aplica)
+      retorno: {
+        tipoServicio: '',
+        noPiezas: 0,
+        peso: 0,
+        contiene: '',
+        comentario: '',
+        tamanio: ''
+      },
       
       // Extra fields for tracking
       extras: {
-        Campo1: String(order.id),
-        Campo2: order.name || `#${order.order_number}`,
-        Campo3: skuSummary
+        campo1: String(order.id),
+        campo2: order.name || `#${order.order_number}`,
+        campo3: skuSummary
       }
     };
     

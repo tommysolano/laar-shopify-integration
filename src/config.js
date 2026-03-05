@@ -25,10 +25,10 @@ const config = {
   
   // LAAR Courier
   laar: {
-    baseUrl: process.env.LAAR_BASE_URL || 'https://api.laarcourier.com:9727',
+    baseUrl: process.env.LAAR_BASE_URL || 'https://api.laarcourier.com:9747',
     username: process.env.LAAR_USERNAME,
     password: process.env.LAAR_PASSWORD,
-    tokenExpirationMinutes: parseInt(process.env.LAAR_TOKEN_EXPIRATION_MINUTES || '55', 10)
+    tokenExpirationMinutes: parseInt(process.env.LAAR_TOKEN_EXPIRATION_MINUTES || '120', 10)
   },
   
   // Datos de origen (remitente) - SIN valores por defecto, deben configurarse en .env
