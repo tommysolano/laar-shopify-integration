@@ -308,8 +308,8 @@ class LaarService {
     const address2 = shipping.address2 || '';
     const fullAddress = `${address1} ${address2}`.trim();
     
-    // Get reference from company, address2, or order note
-    const reference = shipping.company || shipping.address2 || order.note || '';
+    // Get reference from company or address2 (NOT order.note to avoid leaking cédula into referencia)
+    const reference = shipping.company || shipping.address2 || '';
     
     // Calculate total pieces (sum of all item quantities)
     const totalPieces = lineItems.reduce((sum, item) => sum + (item.quantity || 1), 0);
@@ -355,7 +355,8 @@ class LaarService {
         numeroCasa: '',
         postal: '',
         telefono: config.defaults.origin.telefonoO,
-        celular: config.defaults.origin.celularO
+        celular: config.defaults.origin.celularO,
+        correo: config.defaults.origin.correoO
       },
       
       // Destination data (from customer order)

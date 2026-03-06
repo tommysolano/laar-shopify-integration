@@ -41,7 +41,8 @@ const config = {
       referenciaO: process.env.ORIGIN_REFERENCIA || '',
       ciudadO: process.env.ORIGIN_CIUDAD,
       telefonoO: process.env.ORIGIN_TELEFONO,
-      celularO: process.env.ORIGIN_CELULAR
+      celularO: process.env.ORIGIN_CELULAR,
+      correoO: process.env.ORIGIN_CORREO || ''
     }
   }
 };
