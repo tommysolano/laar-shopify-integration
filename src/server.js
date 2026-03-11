@@ -5,6 +5,7 @@ import rateLimit from 'express-rate-limit';
 import config, { validateConfig } from './config.js';
 import webhooksRouter from './routes/webhooks.js';
 import authRouter from './routes/auth.js';
+import carrierServiceRouter from './routes/carrierService.js';
 import { tokenStorage } from './services/tokenStorage.js';
 import { createLogger } from './utils/logger.js';
 
@@ -70,6 +71,9 @@ app.get('/', (req, res) => {
 // Webhook routes
 app.use('/webhooks', webhooksRouter);
 
+// Carrier Service rates endpoint (Shopify calls this for dynamic shipping rates)
+app.use('/carrier-service/rates', carrierServiceRouter);
+
 // Auth routes (OAuth flow)
 app.use('/auth', authRouter);
 
@@ -111,6 +115,7 @@ app.listen(PORT, () => {
   logger.info(`   Environment: ${config.nodeEnv}`);
   logger.info(`   Health check: http://localhost:${PORT}/health`);
   logger.info(`   Webhook endpoint: http://localhost:${PORT}/webhooks/orders_paid`);
+  logger.info(`   Carrier Service: http://localhost:${PORT}/carrier-service/rates`);
   logger.info(`   Auth endpoint: http://localhost:${PORT}/auth?shop=${config.shopify.storeDomain}`);
   
   // Check if store is already authenticated

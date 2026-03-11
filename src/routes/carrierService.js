@@ -1,0 +1,215 @@
+import { Router } from 'express';
+import config from '../config.js';
+import { laarService } from '../services/laarService.js';
+import { createLogger } from '../utils/logger.js';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const router = Router();
+const logger = createLogger('carrier-service');
+
+// Load shipping rates configuration
+let shippingRates;
+try {
+  const ratesPath = join(__dirname, '..', '..', 'data', 'shipping-rates.json');
+  shippingRates = JSON.parse(readFileSync(ratesPath, 'utf-8'));
+  logger.info('Shipping rates loaded successfully');
+} catch (error) {
+  logger.error('Failed to load shipping-rates.json, using defaults:', error.message);
+  shippingRates = {
+    zones: {
+      TL: { name: 'Local', base_price: 2.20, price_per_extra_kg: 0.44, included_kg: 2, min_delivery_days: 1, max_delivery_days: 2 },
+      TP: { name: 'Principal', base_price: 3.47, price_per_extra_kg: 0.77, included_kg: 2, min_delivery_days: 1, max_delivery_days: 3 },
+      TS: { name: 'Secundaria', base_price: 3.74, price_per_extra_kg: 0.83, included_kg: 2, min_delivery_days: 2, max_delivery_days: 4 },
+      TE: { name: 'Especial', base_price: 4.18, price_per_extra_kg: 0.99, included_kg: 2, min_delivery_days: 3, max_delivery_days: 5 },
+      TO: { name: 'Oriente', base_price: 5.28, price_per_extra_kg: 1.54, included_kg: 2, min_delivery_days: 3, max_delivery_days: 5 },
+      TG: { name: 'Galápagos', base_price: 14.30, price_per_extra_kg: 2.86, included_kg: 2, min_delivery_days: 5, max_delivery_days: 10 }
+    },
+    oriente_provinces: ['NAPO', 'PASTAZA', 'MORONA SANTIAGO', 'ZAMORA CHINCHIPE', 'SUCUMBIOS', 'ORELLANA'],
+    galapagos_provinces: ['GALAPAGOS', 'GALÁPAGOS'],
+    default_zone: 'TP',
+    service_name: 'LAAR Courier Express',
+    currency: 'USD',
+    free_shipping_threshold: 0
+  };
+}
+
+/**
+ * Calculate shipping rate based on zone and weight
+ */
+function calculateRate(zone, weightKg, totalPrice) {
+  const zoneConfig = shippingRates.zones[zone] || shippingRates.zones[shippingRates.default_zone];
+  
+  if (!zoneConfig) {
+    logger.error(`Zone ${zone} not found in shipping rates config`);
+    return null;
+  }
+
+  // Free shipping check
+  const freeThreshold = shippingRates.free_shipping_threshold || 0;
+  if (freeThreshold > 0 && totalPrice >= freeThreshold) {
+    return {
+      price: 0,
+      zone,
+      zoneName: zoneConfig.name,
+      minDays: zoneConfig.min_delivery_days,
+      maxDays: zoneConfig.max_delivery_days
+    };
+  }
+
+  // Calculate price: base + extra kg
+  const extraKg = Math.max(0, weightKg - (zoneConfig.included_kg || 1));
+  const price = zoneConfig.base_price + (extraKg * zoneConfig.price_per_extra_kg);
+
+  return {
+    price: Math.round(price * 100) / 100,
+    zone,
+    zoneName: zoneConfig.name,
+    minDays: zoneConfig.min_delivery_days,
+    maxDays: zoneConfig.max_delivery_days
+  };
+}
+
+/**
+ * Add delivery date offset from today
+ */
+function getDeliveryDate(daysFromNow) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysFromNow);
+  return date.toISOString().split('T')[0];
+}
+
+/**
+ * POST /carrier-service/rates
+ * 
+ * Shopify sends rate requests here during checkout.
+ * We look up the destination city in LAAR's catalog to determine the zone,
+ * calculate weight, and return shipping rates.
+ */
+router.post('/', async (req, res) => {
+  try {
+    const rateRequest = req.body?.rate;
+
+    if (!rateRequest) {
+      logger.warn('Invalid rate request: missing rate object');
+      return res.json({ rates: [] });
+    }
+
+    const { destination, items, currency } = rateRequest;
+
+    logger.info('Rate request received', {
+      city: destination?.city,
+      province: destination?.province,
+      country: destination?.country,
+      itemCount: items?.length
+    });
+
+    // Only handle Ecuador shipments
+    if (destination?.country && destination.country !== 'EC') {
+      logger.info('Non-Ecuador destination, returning empty rates');
+      return res.json({ rates: [] });
+    }
+
+    // Calculate total weight in kg (Shopify sends grams per item)
+    const totalWeightGrams = (items || []).reduce((sum, item) => {
+      return sum + ((item.grams || 0) * (item.quantity || 1));
+    }, 0);
+    const totalWeightKg = Math.max(1, Math.ceil(totalWeightGrams / 1000));
+
+    // Calculate total cart price in dollars (Shopify sends cents)
+    const totalPriceCents = (items || []).reduce((sum, item) => {
+      return sum + ((item.price || 0) * (item.quantity || 1));
+    }, 0);
+    const totalPriceDollars = totalPriceCents / 100;
+
+    // Try to find the destination zone using LAAR's city catalog
+    let zone = shippingRates.default_zone;
+    const cityName = destination?.city || '';
+    const provinceName = destination?.province || '';
+
+    // Check if destination is Galápagos or Oriente by province
+    const normalizedProvince = provinceName.toUpperCase().trim();
+    const isGalapagos = (shippingRates.galapagos_provinces || []).some(
+      p => normalizedProvince.includes(p) || p.includes(normalizedProvince)
+    );
+    const isOriente = (shippingRates.oriente_provinces || []).some(
+      p => normalizedProvince.includes(p) || p.includes(normalizedProvince)
+    );
+
+    if (isGalapagos) {
+      zone = 'TG';
+      logger.info(`Province ${provinceName} detected as Galápagos`);
+    } else if (isOriente) {
+      zone = 'TO';
+      logger.info(`Province ${provinceName} detected as Oriente`);
+    } else if (cityName) {
+      try {
+        const cities = await laarService.getCities();
+        const normalizedCity = cityName.toLowerCase().trim();
+
+        // Find matching city
+        let match = cities.find(c => (c.nombre || '').toLowerCase() === normalizedCity);
+        if (!match) {
+          match = cities.find(c => {
+            const laarCity = (c.nombre || '').toLowerCase();
+            return laarCity.includes(normalizedCity) || normalizedCity.includes(laarCity);
+          });
+        }
+
+        if (match) {
+          // Use LAAR trayecto code directly if it matches a configured zone
+          const trayecto = match.trayecto || '';
+          if (shippingRates.zones[trayecto]) {
+            zone = trayecto;
+          }
+          logger.info(`City ${cityName} matched to LAAR city ${match.nombre}, province: ${match.provincia}, zone: ${zone}`);
+        } else {
+          logger.warn(`City ${cityName} not found in LAAR catalog, using default zone: ${zone}`);
+        }
+      } catch (error) {
+        logger.error('Error fetching LAAR cities for rate calc:', error.message);
+        // Continue with default zone
+      }
+    }
+
+    // Calculate rate
+    const rate = calculateRate(zone, totalWeightKg, totalPriceDollars);
+
+    if (!rate) {
+      logger.error('Failed to calculate rate');
+      return res.json({ rates: [] });
+    }
+
+    // Build Shopify rate response
+    // total_price must be in cents (string)
+    const rates = [
+      {
+        service_name: shippingRates.service_name || 'LAAR Courier Express',
+        service_code: `LAAR_${zone}`,
+        total_price: String(Math.round(rate.price * 100)),
+        description: `${rate.zoneName} - Entrega estimada ${rate.minDays}-${rate.maxDays} días hábiles`,
+        currency: currency || shippingRates.currency || 'USD',
+        min_delivery_date: getDeliveryDate(rate.minDays),
+        max_delivery_date: getDeliveryDate(rate.maxDays)
+      }
+    ];
+
+    logger.info('Returning shipping rate', {
+      city: cityName,
+      zone,
+      weightKg: totalWeightKg,
+      price: rate.price,
+      serviceName: rates[0].service_name
+    });
+
+    return res.json({ rates });
+  } catch (error) {
+    logger.error('Carrier service rate calculation failed:', error.message);
+    // Return empty rates on error - Shopify will show "rates unavailable"
+    return res.json({ rates: [] });
+  }
+});
+
+export default router;

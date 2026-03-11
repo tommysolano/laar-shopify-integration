@@ -396,6 +396,55 @@ class ShopifyService {
       // Don't throw - tags are not critical
     }
   }
+
+  /**
+   * Register a CarrierService with Shopify for dynamic shipping rates
+   * This tells Shopify to call our /carrier-service/rates endpoint at checkout
+   */
+  async registerCarrierService() {
+    const token = this.getAccessToken();
+    const callbackUrl = `${config.shopify.appUrl}/carrier-service/rates`;
+
+    // First check if carrier service already exists
+    try {
+      const listResponse = await this.client.get(
+        `${this.restBaseUrl}/carrier_services.json`,
+        { headers: { 'X-Shopify-Access-Token': token } }
+      );
+
+      const existing = (listResponse.data.carrier_services || []).find(
+        cs => cs.callback_url === callbackUrl
+      );
+
+      if (existing) {
+        logger.info('CarrierService already registered', { id: existing.id, callbackUrl });
+        return existing;
+      }
+    } catch (error) {
+      logger.warn('Could not list carrier services:', error.message);
+    }
+
+    // Register new carrier service
+    const response = await this.client.post(
+      `${this.restBaseUrl}/carrier_services.json`,
+      {
+        carrier_service: {
+          name: 'LAAR Courier',
+          callback_url: callbackUrl,
+          service_discovery: true,
+          format: 'json'
+        }
+      },
+      { headers: { 'X-Shopify-Access-Token': token } }
+    );
+
+    logger.info('CarrierService registered', {
+      id: response.data.carrier_service.id,
+      callbackUrl
+    });
+
+    return response.data.carrier_service;
+  }
 }
 
 // Export singleton instance

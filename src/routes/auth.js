@@ -3,6 +3,7 @@ import crypto from 'crypto';
 import axios from 'axios';
 import config from '../config.js';
 import { tokenStorage } from '../services/tokenStorage.js';
+import { shopifyService } from '../services/shopifyService.js';
 import { createLogger } from '../utils/logger.js';
 
 const router = Router();
@@ -16,7 +17,9 @@ const SCOPES = [
   'write_fulfillments',
   'read_assigned_fulfillment_orders',
   'write_assigned_fulfillment_orders',
-  'write_merchant_managed_fulfillment_orders'
+  'write_merchant_managed_fulfillment_orders',
+  'read_shipping',
+  'write_shipping'
 ].join(',');
 
 /**
@@ -209,6 +212,15 @@ router.get('/callback', async (req, res) => {
     const webhookResults = await registerWebhooks(shop, access_token);
     const allWebhooksOk = webhookResults.every(r => r.success);
     const webhookStatus = allWebhooksOk ? '✅ Webhooks registrados' : '⚠️ Algunos webhooks fallaron';
+
+    // Register CarrierService for dynamic shipping rates
+    logger.info('Registering CarrierService...');
+    try {
+      await shopifyService.registerCarrierService();
+      logger.info('✅ CarrierService registered for dynamic shipping rates');
+    } catch (carrierError) {
+      logger.error('Failed to register CarrierService:', carrierError.message);
+    }
     
     // Redirect to success page or app - show token for copying to env var
     res.send(`
