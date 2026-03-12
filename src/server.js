@@ -93,6 +93,21 @@ app.get('/token-status', (req, res) => {
   });
 });
 
+// Manual CarrierService registration endpoint
+app.post('/register-carrier', async (req, res) => {
+  try {
+    const { shopifyService } = await import('./services/shopifyService.js');
+    const result = await shopifyService.registerCarrierService();
+    res.json({ success: true, carrierService: result });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      details: error.response?.data || null
+    });
+  }
+});
+
 // 404 handler
 app.use((req, res) => {
   res.status(404).json({ error: 'Not found' });
