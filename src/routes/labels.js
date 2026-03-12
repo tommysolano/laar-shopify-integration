@@ -26,9 +26,10 @@ router.get('/:guia', async (req, res) => {
     const token = await laarService.getToken();
 
     const response = await laarService.client.get(
-      `/guias/pdfs/4x4/${encodeURIComponent(guia)}`,
+      `/api/Pdfs/v3/etiqueta/descargar`,
       {
         headers: { 'Authorization': `Bearer ${token}` },
+        params: { guia },
         responseType: 'arraybuffer',
         timeout: 30000
       }
@@ -50,9 +51,10 @@ router.get('/:guia', async (req, res) => {
         laarService.clearToken();
         const token = await laarService.getToken();
         const response = await laarService.client.get(
-          `/guias/pdfs/4x4/${encodeURIComponent(guia)}`,
+          `/api/Pdfs/v3/etiqueta/descargar`,
           {
             headers: { 'Authorization': `Bearer ${token}` },
+            params: { guia },
             responseType: 'arraybuffer',
             timeout: 30000
           }
