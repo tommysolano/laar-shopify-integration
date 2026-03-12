@@ -1,3 +1,4 @@
 # Ignore token storage files (contain sensitive data)
 tokens.json
 *.json
+!shipping-rates.json
