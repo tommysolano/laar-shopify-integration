@@ -6,6 +6,7 @@ import config, { validateConfig } from './config.js';
 import webhooksRouter from './routes/webhooks.js';
 import authRouter from './routes/auth.js';
 import carrierServiceRouter from './routes/carrierService.js';
+import labelsRouter from './routes/labels.js';
 import { tokenStorage } from './services/tokenStorage.js';
 import { createLogger } from './utils/logger.js';
 
@@ -74,6 +75,9 @@ app.use('/webhooks', webhooksRouter);
 // Carrier Service rates endpoint (Shopify calls this for dynamic shipping rates)
 app.use('/carrier-service/rates', carrierServiceRouter);
 
+// Label PDF proxy (fetches from LAAR with auth and serves to browser)
+app.use('/labels', labelsRouter);
+
 // Auth routes (OAuth flow)
 app.use('/auth', authRouter);
 
@@ -104,6 +108,20 @@ app.post('/register-carrier', async (req, res) => {
       success: false, 
       error: error.message,
       details: error.response?.data || null
+    });
+  }
+});
+
+// Register metafield definitions so label_url and guia appear in Shopify admin order page
+app.post('/setup-metafields', async (req, res) => {
+  try {
+    const { shopifyService } = await import('./services/shopifyService.js');
+    const results = await shopifyService.createLabelMetafieldDefinitions();
+    res.json({ success: true, results });
+  } catch (error) {
+    res.status(500).json({ 
+      success: false, 
+      error: error.message 
     });
   }
 });

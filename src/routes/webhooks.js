@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { verifyShopifyHmacMiddleware } from '../utils/verifyShopifyHmac.js';
 import { laarService } from '../services/laarService.js';
 import { shopifyService } from '../services/shopifyService.js';
+import config from '../config.js';
 import { createLogger } from '../utils/logger.js';
 
 const router = Router();
@@ -85,9 +86,12 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     const { guia, pdfUrl } = guideResult;
     logger.info('✅ LAAR guide created', { orderId, guia, pdfUrl });
     
+    // Build proxy label URL (accessible without LAAR auth)
+    const labelUrl = `${config.shopify.appUrl}/labels/${guia}`;
+    
     // Step 3: Save metafields to order
     logger.info('Saving metafields to order...', { orderId, guia });
-    await shopifyService.saveOrderMetafields(orderId, guia, pdfUrl);
+    await shopifyService.saveOrderMetafields(orderId, guia, pdfUrl, labelUrl);
     
     // Step 4: Create fulfillment with tracking
     logger.info('Creating fulfillment...', { orderId, guia });

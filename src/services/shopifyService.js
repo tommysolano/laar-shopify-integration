@@ -131,6 +131,10 @@ class ShopifyService {
             id
             value
           }
+          metafieldLabelUrl: metafield(namespace: "laar", key: "label_url") {
+            id
+            value
+          }
         }
       }
     `;
@@ -148,6 +152,7 @@ class ShopifyService {
         return {
           guia: order.metafield.value,
           pdfUrl: order.metafieldPdfUrl?.value || null,
+          labelUrl: order.metafieldLabelUrl?.value || null,
           exists: true
         };
       }
@@ -166,7 +171,7 @@ class ShopifyService {
    * @param {string} guia - Guide number
    * @param {string} pdfUrl - PDF URL
    */
-  async saveOrderMetafields(orderId, guia, pdfUrl) {
+  async saveOrderMetafields(orderId, guia, pdfUrl, labelUrl) {
     const gid = this.toOrderGid(orderId);
     
     const mutation = `
@@ -203,6 +208,16 @@ class ShopifyService {
         key: 'pdf_url',
         type: 'url',
         value: pdfUrl
+      });
+    }
+    
+    if (labelUrl) {
+      metafields.push({
+        ownerId: gid,
+        namespace: 'laar',
+        key: 'label_url',
+        type: 'url',
+        value: labelUrl
       });
     }
     
@@ -395,6 +410,78 @@ class ShopifyService {
       logger.error('Failed to add order tags:', error.message);
       // Don't throw - tags are not critical
     }
+  }
+
+  /**
+   * Create metafield definitions so they are visible and pinned in Shopify admin order page
+   */
+  async createLabelMetafieldDefinitions() {
+    const definitions = [
+      {
+        name: 'Etiqueta LAAR',
+        namespace: 'laar',
+        key: 'label_url',
+        type: 'url',
+        ownerType: 'ORDER',
+        pin: true
+      },
+      {
+        name: 'Guía LAAR',
+        namespace: 'laar',
+        key: 'guia',
+        type: 'single_line_text_field',
+        ownerType: 'ORDER',
+        pin: true
+      }
+    ];
+
+    const mutation = `
+      mutation createMetafieldDefinition($definition: MetafieldDefinitionInput!) {
+        metafieldDefinitionCreate(definition: $definition) {
+          createdDefinition {
+            id
+            name
+            namespace
+            key
+          }
+          userErrors {
+            field
+            message
+          }
+        }
+      }
+    `;
+
+    const results = [];
+    for (const def of definitions) {
+      try {
+        const data = await this.graphql(mutation, {
+          definition: {
+            name: def.name,
+            namespace: def.namespace,
+            key: def.key,
+            type: def.type,
+            ownerType: def.ownerType,
+            pin: def.pin,
+            visibleToStorefrontApi: false
+          }
+        });
+
+        const errors = data.metafieldDefinitionCreate.userErrors;
+        if (errors.length > 0) {
+          // "already exists" is fine
+          logger.warn(`Metafield definition ${def.key}:`, errors[0].message);
+          results.push({ key: def.key, status: 'exists', message: errors[0].message });
+        } else {
+          logger.info(`Metafield definition created: ${def.key}`);
+          results.push({ key: def.key, status: 'created', id: data.metafieldDefinitionCreate.createdDefinition.id });
+        }
+      } catch (error) {
+        logger.error(`Failed to create metafield definition ${def.key}:`, error.message);
+        results.push({ key: def.key, status: 'error', message: error.message });
+      }
+    }
+    return results;
   }
 
   /**
