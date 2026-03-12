@@ -131,11 +131,11 @@ router.post('/', async (req, res) => {
 
     // Check if destination is Galápagos or Oriente by province
     const normalizedProvince = provinceName.toUpperCase().trim();
-    const isGalapagos = (shippingRates.galapagos_provinces || []).some(
-      p => normalizedProvince.includes(p) || p.includes(normalizedProvince)
+    const isGalapagos = normalizedProvince.length > 2 && (shippingRates.galapagos_provinces || []).some(
+      p => normalizedProvince === p || normalizedProvince.includes(p) || p.includes(normalizedProvince)
     );
-    const isOriente = (shippingRates.oriente_provinces || []).some(
-      p => normalizedProvince.includes(p) || p.includes(normalizedProvince)
+    const isOriente = normalizedProvince.length > 2 && (shippingRates.oriente_provinces || []).some(
+      p => normalizedProvince === p || normalizedProvince.includes(p) || p.includes(normalizedProvince)
     );
 
     if (isGalapagos) {
