@@ -462,8 +462,7 @@ class ShopifyService {
             key: def.key,
             type: def.type,
             ownerType: def.ownerType,
-            pin: def.pin,
-            visibleToStorefrontApi: false
+            pin: def.pin
           }
         });
 
