@@ -59,9 +59,11 @@ function calculateRate(zone, weightKg, totalPrice) {
     };
   }
 
-  // Calculate price: base + extra kg
+  // Calculate price: base + extra kg + IVA
   const extraKg = Math.max(0, weightKg - (zoneConfig.included_kg || 1));
-  const price = zoneConfig.base_price + (extraKg * zoneConfig.price_per_extra_kg);
+  const subtotal = zoneConfig.base_price + (extraKg * zoneConfig.price_per_extra_kg);
+  const ivaRate = shippingRates.iva_rate || 0;
+  const price = subtotal * (1 + ivaRate);
 
   return {
     price: Math.round(price * 100) / 100,
