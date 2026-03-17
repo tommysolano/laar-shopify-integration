@@ -138,12 +138,36 @@ router.post('/', async (req, res) => {
       p => normalizedProvince === p || normalizedProvince.includes(p) || p.includes(normalizedProvince)
     );
 
+    // Check if destination is in the Local zone (Guayaquil or La Puntilla in Samborondón)
+    const normalizedCity = cityName.toLowerCase().trim();
+    const localConfig = shippingRates.local_zone || {};
+    const localCities = (localConfig.cities || []).map(c => c.toLowerCase());
+    const localSectors = (localConfig.special_sectors || []).map(s => s.toLowerCase());
+    const localSectorCity = (localConfig.special_sectors_city || '').toLowerCase();
+
+    // City is directly Guayaquil (or contains it, e.g. "Guayaquil - Norte")
+    const isLocalCity = localCities.some(c => normalizedCity === c || normalizedCity.includes(c));
+
+    // City is "La Puntilla" / "Puntilla" directly
+    const isSectorAsCity = localSectors.some(s => normalizedCity === s || normalizedCity.includes(s));
+
+    // City is Samborondón and address mentions La Puntilla
+    const address1 = (destination?.address1 || '').toLowerCase();
+    const address2 = (destination?.address2 || '').toLowerCase();
+    const isSectorInAddress = normalizedCity === localSectorCity &&
+      localSectors.some(s => address1.includes(s) || address2.includes(s));
+
+    const isLocal = isLocalCity || isSectorAsCity || isSectorInAddress;
+
     if (isGalapagos) {
       zone = 'TG';
       logger.info(`Province ${provinceName} detected as Galápagos`);
     } else if (isOriente) {
       zone = 'TO';
       logger.info(`Province ${provinceName} detected as Oriente`);
+    } else if (isLocal) {
+      zone = 'TL';
+      logger.info(`Destination detected as Local zone: city=${cityName}, address1=${destination?.address1}`);
     } else if (cityName) {
       try {
         const cities = await laarService.getCities();

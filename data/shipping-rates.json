@@ -49,6 +49,11 @@
       "max_delivery_days": 10
     }
   },
+  "local_zone": {
+    "cities": ["GUAYAQUIL"],
+    "special_sectors": ["LA PUNTILLA", "PUNTILLA"],
+    "special_sectors_city": "SAMBORONDON"
+  },
   "oriente_provinces": ["NAPO", "PASTAZA", "MORONA SANTIAGO", "ZAMORA CHINCHIPE", "SUCUMBIOS", "ORELLANA"],
   "galapagos_provinces": ["GALAPAGOS", "GALÁPAGOS"],
   "default_zone": "TL",
