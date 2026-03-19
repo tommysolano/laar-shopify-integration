@@ -25,7 +25,7 @@ $SCOPES = implode(',', [
 
 // Store nonces temporarily (in memory per-request, persisted in session for PHP)
 // For PHP we use a file-based approach since each request is a new process
-$nonceFile = dirname(__DIR__) . '/data/nonces.json';
+$nonceFile = dirname(__DIR__, 2) . '/data/nonces.json';
 
 /**
  * Load nonces from file
