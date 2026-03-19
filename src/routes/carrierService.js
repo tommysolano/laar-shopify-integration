@@ -47,26 +47,20 @@ function calculateRate(zone, weightKg, totalPrice) {
     return null;
   }
 
-  // Free shipping check
-  const freeThreshold = shippingRates.free_shipping_threshold || 0;
-  if (freeThreshold > 0 && totalPrice >= freeThreshold) {
-    return {
-      price: 0,
-      zone,
-      zoneName: zoneConfig.name,
-      minDays: zoneConfig.min_delivery_days,
-      maxDays: zoneConfig.max_delivery_days
-    };
-  }
-
-  // Calculate price: base + extra kg + IVA
+  // Calculate real price: base + extra kg + IVA
   const extraKg = Math.max(0, weightKg - (zoneConfig.included_kg || 1));
   const subtotal = zoneConfig.base_price + (extraKg * zoneConfig.price_per_extra_kg);
   const ivaRate = shippingRates.iva_rate || 0;
-  const price = subtotal * (1 + ivaRate);
+  const actualCost = Math.round(subtotal * (1 + ivaRate) * 100) / 100;
+
+  // Free shipping check
+  const freeThreshold = shippingRates.free_shipping_threshold || 0;
+  const isFreeShipping = freeThreshold > 0 && totalPrice >= freeThreshold;
 
   return {
-    price: Math.round(price * 100) / 100,
+    price: isFreeShipping ? 0 : actualCost,
+    actualCost,
+    isFreeShipping,
     zone,
     zoneName: zoneConfig.name,
     minDays: zoneConfig.min_delivery_days,
@@ -210,12 +204,16 @@ router.post('/', async (req, res) => {
 
     // Build Shopify rate response
     // total_price must be in cents (string)
+    const description = rate.isFreeShipping
+      ? `${rate.zoneName} - Envío Gratis - Entrega estimada ${rate.minDays}-${rate.maxDays} días hábiles`
+      : `${rate.zoneName} - Entrega estimada ${rate.minDays}-${rate.maxDays} días hábiles`;
+
     const rates = [
       {
         service_name: shippingRates.service_name || 'LAAR Courier Express',
         service_code: `LAAR_${zone}`,
         total_price: String(Math.round(rate.price * 100)),
-        description: `${rate.zoneName} - Entrega estimada ${rate.minDays}-${rate.maxDays} días hábiles`,
+        description,
         currency: currency || shippingRates.currency || 'USD',
         min_delivery_date: getDeliveryDate(rate.minDays),
         max_delivery_date: getDeliveryDate(rate.maxDays)
@@ -227,8 +225,19 @@ router.post('/', async (req, res) => {
       zone,
       weightKg: totalWeightKg,
       price: rate.price,
+      actualCost: rate.actualCost,
+      isFreeShipping: rate.isFreeShipping,
       serviceName: rates[0].service_name
     });
+
+    if (rate.isFreeShipping) {
+      logger.info('💰 Envío gratis aplicado - Costo real LAAR asumido por la tienda', {
+        city: cityName,
+        zone,
+        actualCost: rate.actualCost,
+        cartTotal: totalPriceDollars
+      });
+    }
 
     return res.json({ rates });
   } catch (error) {

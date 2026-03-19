@@ -4,9 +4,59 @@ import { laarService } from '../services/laarService.js';
 import { shopifyService } from '../services/shopifyService.js';
 import config from '../config.js';
 import { createLogger } from '../utils/logger.js';
+import { readFileSync } from 'fs';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
 
+const __dirname = dirname(fileURLToPath(import.meta.url));
 const router = Router();
 const logger = createLogger('webhooks');
+
+// Load shipping rates for cost calculation
+let shippingRates;
+try {
+  const ratesPath = join(__dirname, '..', '..', 'data', 'shipping-rates.json');
+  shippingRates = JSON.parse(readFileSync(ratesPath, 'utf-8'));
+} catch (error) {
+  logger.error('Failed to load shipping-rates.json in webhooks:', error.message);
+  shippingRates = null;
+}
+
+/**
+ * Calculate the real LAAR shipping cost for an order
+ * Used to inform the store owner how much free-shipping orders actually cost
+ */
+function calculateRealShippingCost(order) {
+  if (!shippingRates) return null;
+
+  // Extract zone from shipping_lines code (e.g., "LAAR_TL" -> "TL")
+  const shippingLine = (order.shipping_lines || [])[0];
+  if (!shippingLine) return null;
+
+  const code = shippingLine.code || '';
+  const zone = code.replace('LAAR_', '');
+  const zoneConfig = shippingRates.zones[zone];
+  if (!zoneConfig) return null;
+
+  // Calculate weight in kg
+  const totalWeightGrams = (order.line_items || []).reduce((sum, item) => {
+    return sum + ((item.grams || 0) * (item.quantity || 1));
+  }, 0);
+  const totalWeightKg = Math.max(1, Math.ceil(totalWeightGrams / 1000));
+
+  // Calculate real cost: base + extra kg + IVA
+  const extraKg = Math.max(0, totalWeightKg - (zoneConfig.included_kg || 1));
+  const subtotal = zoneConfig.base_price + (extraKg * zoneConfig.price_per_extra_kg);
+  const ivaRate = shippingRates.iva_rate || 0;
+  const cost = Math.round(subtotal * (1 + ivaRate) * 100) / 100;
+
+  return {
+    cost,
+    zone,
+    zoneName: zoneConfig.name,
+    weightKg: totalWeightKg
+  };
+}
 
 /**
  * POST /webhooks/orders_paid
@@ -89,11 +139,31 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     // Build proxy label URL (accessible without LAAR auth)
     const labelUrl = `${config.shopify.appUrl}/labels/${guia}`;
     
-    // Step 3: Save metafields to order
+    // Step 3: Calculate real shipping cost (for store owner visibility)
+    let shippingCost = null;
+    const shippingPrice = parseFloat((order.shipping_lines || [])[0]?.price || '0');
+    const isFreeShipping = shippingPrice === 0;
+
+    if (isFreeShipping) {
+      const costInfo = calculateRealShippingCost(order);
+      if (costInfo) {
+        shippingCost = costInfo.cost;
+        logger.info('💰 Envío gratis - Costo real LAAR asumido por la tienda', {
+          orderId,
+          orderName,
+          shippingCost,
+          zone: costInfo.zone,
+          zoneName: costInfo.zoneName,
+          weightKg: costInfo.weightKg
+        });
+      }
+    }
+
+    // Step 4: Save metafields to order
     logger.info('Saving metafields to order...', { orderId, guia });
-    await shopifyService.saveOrderMetafields(orderId, guia, pdfUrl, labelUrl);
+    await shopifyService.saveOrderMetafields(orderId, guia, pdfUrl, labelUrl, shippingCost);
     
-    // Step 4: Create fulfillment with tracking
+    // Step 5: Create fulfillment with tracking
     logger.info('Creating fulfillment...', { orderId, guia });
     const trackingUrl = `https://fenix.laarcourier.com/Tracking/?guia=${guia}`;
     
@@ -116,7 +186,7 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
       });
     }
     
-    // Step 5: Add tag for easy filtering (optional)
+    // Step 6: Add tag for easy filtering (optional)
     try {
       await shopifyService.addOrderTags(orderId, ['laar-guia-created', `guia-${guia}`]);
     } catch (tagError) {

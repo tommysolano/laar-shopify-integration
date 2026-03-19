@@ -170,8 +170,10 @@ class ShopifyService {
    * @param {string|number} orderId - Order ID
    * @param {string} guia - Guide number
    * @param {string} pdfUrl - PDF URL
+   * @param {string} labelUrl - Label proxy URL
+   * @param {number|null} shippingCost - Real LAAR shipping cost (when free shipping applied)
    */
-  async saveOrderMetafields(orderId, guia, pdfUrl, labelUrl) {
+  async saveOrderMetafields(orderId, guia, pdfUrl, labelUrl, shippingCost = null) {
     const gid = this.toOrderGid(orderId);
     
     const mutation = `
@@ -218,6 +220,16 @@ class ShopifyService {
         key: 'label_url',
         type: 'url',
         value: labelUrl
+      });
+    }
+    
+    if (shippingCost !== null && shippingCost !== undefined) {
+      metafields.push({
+        ownerId: gid,
+        namespace: 'laar',
+        key: 'costo_envio',
+        type: 'number_decimal',
+        value: String(shippingCost)
       });
     }
     
