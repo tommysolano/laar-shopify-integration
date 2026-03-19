@@ -444,6 +444,14 @@ class ShopifyService {
         type: 'single_line_text_field',
         ownerType: 'ORDER',
         pin: true
+      },
+      {
+        name: 'Costo Envío LAAR',
+        namespace: 'laar',
+        key: 'costo_envio',
+        type: 'number_decimal',
+        ownerType: 'ORDER',
+        pin: true
       }
     ];
 

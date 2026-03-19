@@ -27,16 +27,40 @@ try {
  * Used to inform the store owner how much free-shipping orders actually cost
  */
 function calculateRealShippingCost(order) {
-  if (!shippingRates) return null;
+  if (!shippingRates) {
+    logger.warn('shippingRates not loaded, cannot calculate real cost');
+    return null;
+  }
 
-  // Extract zone from shipping_lines code (e.g., "LAAR_TL" -> "TL")
   const shippingLine = (order.shipping_lines || [])[0];
-  if (!shippingLine) return null;
+  if (!shippingLine) {
+    logger.warn('No shipping_lines found in order');
+    return null;
+  }
 
+  logger.info('shipping_lines[0] data:', {
+    code: shippingLine.code,
+    title: shippingLine.title,
+    source: shippingLine.source,
+    price: shippingLine.price
+  });
+
+  // Try to extract zone from code (e.g., "LAAR_TL" -> "TL")
   const code = shippingLine.code || '';
-  const zone = code.replace('LAAR_', '');
-  const zoneConfig = shippingRates.zones[zone];
-  if (!zoneConfig) return null;
+  let zone = code.replace('LAAR_', '');
+  let zoneConfig = shippingRates.zones[zone];
+
+  // Fallback: if zone not found, use default zone
+  if (!zoneConfig) {
+    logger.warn(`Zone "${zone}" from code "${code}" not found in rates, using default: ${shippingRates.default_zone}`);
+    zone = shippingRates.default_zone;
+    zoneConfig = shippingRates.zones[zone];
+  }
+
+  if (!zoneConfig) {
+    logger.error('Could not determine zone config for shipping cost calculation');
+    return null;
+  }
 
   // Calculate weight in kg
   const totalWeightGrams = (order.line_items || []).reduce((sum, item) => {
@@ -49,6 +73,8 @@ function calculateRealShippingCost(order) {
   const subtotal = zoneConfig.base_price + (extraKg * zoneConfig.price_per_extra_kg);
   const ivaRate = shippingRates.iva_rate || 0;
   const cost = Math.round(subtotal * (1 + ivaRate) * 100) / 100;
+
+  logger.info('Real shipping cost calculated:', { cost, zone, zoneName: zoneConfig.name, weightKg: totalWeightKg });
 
   return {
     cost,
@@ -144,19 +170,22 @@ router.post('/orders_paid', verifyShopifyHmacMiddleware, async (req, res) => {
     const shippingPrice = parseFloat((order.shipping_lines || [])[0]?.price || '0');
     const isFreeShipping = shippingPrice === 0;
 
-    if (isFreeShipping) {
-      const costInfo = calculateRealShippingCost(order);
-      if (costInfo) {
-        shippingCost = costInfo.cost;
+    const costInfo = calculateRealShippingCost(order);
+    if (costInfo) {
+      shippingCost = costInfo.cost;
+      if (isFreeShipping) {
         logger.info('💰 Envío gratis - Costo real LAAR asumido por la tienda', {
-          orderId,
-          orderName,
-          shippingCost,
-          zone: costInfo.zone,
-          zoneName: costInfo.zoneName,
-          weightKg: costInfo.weightKg
+          orderId, orderName, shippingCost,
+          zone: costInfo.zone, zoneName: costInfo.zoneName, weightKg: costInfo.weightKg
+        });
+      } else {
+        logger.info('📦 Costo de envío LAAR (cobrado al cliente)', {
+          orderId, orderName, shippingCost,
+          zone: costInfo.zone, zoneName: costInfo.zoneName
         });
       }
+    } else {
+      logger.warn('⚠️ No se pudo calcular el costo real de envío LAAR', { orderId, orderName });
     }
 
     // Step 4: Save metafields to order
