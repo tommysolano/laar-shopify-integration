@@ -52,26 +52,20 @@ function calculateRate(array $shippingRates, string $zone, float $weightKg, floa
         return null;
     }
 
-    // Free shipping check
-    $freeThreshold = $shippingRates['free_shipping_threshold'] ?? 0;
-    if ($freeThreshold > 0 && $totalPrice >= $freeThreshold) {
-        return [
-            'price' => 0,
-            'zone' => $zone,
-            'zoneName' => $zoneConfig['name'],
-            'minDays' => $zoneConfig['min_delivery_days'],
-            'maxDays' => $zoneConfig['max_delivery_days'],
-        ];
-    }
-
-    // Calculate price: base + extra kg + IVA
+    // Calculate real price: base + extra kg + IVA
     $extraKg = max(0, $weightKg - ($zoneConfig['included_kg'] ?? 1));
     $subtotal = $zoneConfig['base_price'] + ($extraKg * $zoneConfig['price_per_extra_kg']);
     $ivaRate = $shippingRates['iva_rate'] ?? 0;
-    $price = $subtotal * (1 + $ivaRate);
+    $actualCost = round($subtotal * (1 + $ivaRate), 2);
+
+    // Free shipping check
+    $freeThreshold = $shippingRates['free_shipping_threshold'] ?? 0;
+    $isFreeShipping = $freeThreshold > 0 && $totalPrice >= $freeThreshold;
 
     return [
-        'price' => round($price, 2),
+        'price' => $isFreeShipping ? 0 : $actualCost,
+        'actualCost' => $actualCost,
+        'isFreeShipping' => $isFreeShipping,
         'zone' => $zone,
         'zoneName' => $zoneConfig['name'],
         'minDays' => $zoneConfig['min_delivery_days'],
@@ -227,12 +221,16 @@ $router->post('/carrier-service/rates', function () use ($shippingRates, $logger
         }
 
         // Build Shopify rate response (total_price in cents as string)
+        $description = $rate['isFreeShipping']
+            ? "{$rate['zoneName']} - Envío Gratis - Entrega estimada {$rate['minDays']}-{$rate['maxDays']} días hábiles"
+            : "{$rate['zoneName']} - Entrega estimada {$rate['minDays']}-{$rate['maxDays']} días hábiles";
+
         $rates = [
             [
                 'service_name' => $shippingRates['service_name'] ?? 'LAAR Courier Express',
                 'service_code' => "LAAR_{$zone}",
                 'total_price' => (string)(int)round($rate['price'] * 100),
-                'description' => "{$rate['zoneName']} - Entrega estimada {$rate['minDays']}-{$rate['maxDays']} días hábiles",
+                'description' => $description,
                 'currency' => $currency ?? $shippingRates['currency'] ?? 'USD',
                 'min_delivery_date' => getDeliveryDate($rate['minDays']),
                 'max_delivery_date' => getDeliveryDate($rate['maxDays']),
@@ -244,7 +242,19 @@ $router->post('/carrier-service/rates', function () use ($shippingRates, $logger
             'zone' => $zone,
             'weightKg' => $totalWeightKg,
             'price' => $rate['price'],
+            'actualCost' => $rate['actualCost'],
+            'isFreeShipping' => $rate['isFreeShipping'],
+            'serviceName' => $rates[0]['service_name'],
         ]);
+
+        if ($rate['isFreeShipping']) {
+            $logger->info('Envío gratis aplicado - Costo real LAAR asumido por la tienda', [
+                'city' => $cityName,
+                'zone' => $zone,
+                'actualCost' => $rate['actualCost'],
+                'cartTotal' => $totalPriceDollars,
+            ]);
+        }
 
         Router::json(['rates' => $rates]);
     } catch (\Exception $e) {

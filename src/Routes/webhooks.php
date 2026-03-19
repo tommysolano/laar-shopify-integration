@@ -12,6 +12,81 @@ use App\Utils\VerifyShopifyHmac;
 
 $logger = Logger::create('webhooks');
 
+// Load shipping rates for cost calculation
+$shippingRates = null;
+try {
+    $ratesPath = dirname(__DIR__, 2) . '/data/shipping-rates.json';
+    if (file_exists($ratesPath)) {
+        $shippingRates = json_decode(file_get_contents($ratesPath), true);
+    }
+} catch (\Exception $e) {
+    $logger->error('Failed to load shipping-rates.json in webhooks: ' . $e->getMessage());
+}
+
+/**
+ * Calculate the real LAAR shipping cost for an order
+ * Used to inform the store owner how much free-shipping orders actually cost
+ */
+function calculateRealShippingCost(array $order, ?array $shippingRates, $logger): ?array
+{
+    if (!$shippingRates) {
+        $logger->warning('shippingRates not loaded, cannot calculate real cost');
+        return null;
+    }
+
+    $shippingLine = ($order['shipping_lines'] ?? [])[0] ?? null;
+    if (!$shippingLine) {
+        $logger->warning('No shipping_lines found in order');
+        return null;
+    }
+
+    $logger->info('shipping_lines[0] data:', [
+        'code' => $shippingLine['code'] ?? '',
+        'title' => $shippingLine['title'] ?? '',
+        'source' => $shippingLine['source'] ?? '',
+        'price' => $shippingLine['price'] ?? '',
+    ]);
+
+    // Try to extract zone from code (e.g., "LAAR_TL" -> "TL")
+    $code = $shippingLine['code'] ?? '';
+    $zone = str_replace('LAAR_', '', $code);
+    $zoneConfig = $shippingRates['zones'][$zone] ?? null;
+
+    // Fallback: if zone not found, use default zone
+    if (!$zoneConfig) {
+        $logger->warning("Zone \"{$zone}\" from code \"{$code}\" not found in rates, using default: {$shippingRates['default_zone']}");
+        $zone = $shippingRates['default_zone'];
+        $zoneConfig = $shippingRates['zones'][$zone] ?? null;
+    }
+
+    if (!$zoneConfig) {
+        $logger->error('Could not determine zone config for shipping cost calculation');
+        return null;
+    }
+
+    // Calculate weight in kg
+    $totalWeightGrams = 0;
+    foreach ($order['line_items'] ?? [] as $item) {
+        $totalWeightGrams += (($item['grams'] ?? 0) * ($item['quantity'] ?? 1));
+    }
+    $totalWeightKg = max(1, (int)ceil($totalWeightGrams / 1000));
+
+    // Calculate real cost: base + extra kg + IVA
+    $extraKg = max(0, $totalWeightKg - ($zoneConfig['included_kg'] ?? 1));
+    $subtotal = $zoneConfig['base_price'] + ($extraKg * $zoneConfig['price_per_extra_kg']);
+    $ivaRate = $shippingRates['iva_rate'] ?? 0;
+    $cost = round($subtotal * (1 + $ivaRate), 2);
+
+    $logger->info('Real shipping cost calculated:', ['cost' => $cost, 'zone' => $zone, 'zoneName' => $zoneConfig['name'], 'weightKg' => $totalWeightKg]);
+
+    return [
+        'cost' => $cost,
+        'zone' => $zone,
+        'zoneName' => $zoneConfig['name'],
+        'weightKg' => $totalWeightKg,
+    ];
+}
+
 /**
  * POST /webhooks/orders_paid
  * 
@@ -24,7 +99,7 @@ $logger = Logger::create('webhooks');
  * 5. Save metafields to order
  * 6. Create fulfillment with tracking
  */
-$router->post('/webhooks/orders_paid', function () use ($logger) {
+$router->post('/webhooks/orders_paid', function () use ($logger, $shippingRates) {
     // Step 0: Verify HMAC
     if (!VerifyShopifyHmac::middleware()) {
         return; // Response already sent by middleware
@@ -93,11 +168,34 @@ $router->post('/webhooks/orders_paid', function () use ($logger) {
         // Build proxy label URL
         $labelUrl = Config::get('shopify.appUrl') . "/labels/{$guia}";
 
-        // Step 3: Save metafields to order
-        $logger->info('Saving metafields to order...', ['orderId' => $orderId, 'guia' => $guia]);
-        $shopifyService->saveOrderMetafields($orderId, $guia, $pdfUrl, $labelUrl);
+        // Step 3: Calculate real shipping cost (for store owner visibility)
+        $shippingCost = null;
+        $shippingPrice = (float)(($order['shipping_lines'] ?? [])[0]['price'] ?? '0');
+        $isFreeShipping = $shippingPrice === 0.0;
 
-        // Step 4: Create fulfillment with tracking
+        $costInfo = calculateRealShippingCost($order, $shippingRates, $logger);
+        if ($costInfo) {
+            $shippingCost = $costInfo['cost'];
+            if ($isFreeShipping) {
+                $logger->info('Envío gratis - Costo real LAAR asumido por la tienda', [
+                    'orderId' => $orderId, 'orderName' => $orderName, 'shippingCost' => $shippingCost,
+                    'zone' => $costInfo['zone'], 'zoneName' => $costInfo['zoneName'], 'weightKg' => $costInfo['weightKg'],
+                ]);
+            } else {
+                $logger->info('Costo de envío LAAR (cobrado al cliente)', [
+                    'orderId' => $orderId, 'orderName' => $orderName, 'shippingCost' => $shippingCost,
+                    'zone' => $costInfo['zone'], 'zoneName' => $costInfo['zoneName'],
+                ]);
+            }
+        } else {
+            $logger->warning('No se pudo calcular el costo real de envío LAAR', ['orderId' => $orderId, 'orderName' => $orderName]);
+        }
+
+        // Step 4: Save metafields to order
+        $logger->info('Saving metafields to order...', ['orderId' => $orderId, 'guia' => $guia]);
+        $shopifyService->saveOrderMetafields($orderId, $guia, $pdfUrl, $labelUrl, $shippingCost);
+
+        // Step 5: Create fulfillment with tracking
         $logger->info('Creating fulfillment...', ['orderId' => $orderId, 'guia' => $guia]);
         $trackingUrl = "https://fenix.laarcourier.com/Tracking/?guia={$guia}";
 
@@ -116,7 +214,7 @@ $router->post('/webhooks/orders_paid', function () use ($logger) {
             $logger->error('Failed to create fulfillment (metafields saved): ' . $fulfillmentError->getMessage());
         }
 
-        // Step 5: Add tag for easy filtering
+        // Step 6: Add tag for easy filtering
         try {
             $shopifyService->addOrderTags($orderId, ['laar-guia-created', "guia-{$guia}"]);
         } catch (\Exception $tagError) {

@@ -174,7 +174,7 @@ class ShopifyService
     /**
      * Save LAAR guide data to order metafields
      */
-    public function saveOrderMetafields($orderId, string $guia, ?string $pdfUrl, ?string $labelUrl): array
+    public function saveOrderMetafields($orderId, string $guia, ?string $pdfUrl, ?string $labelUrl, ?float $shippingCost = null): array
     {
         $gid = $this->toOrderGid($orderId);
 
@@ -222,6 +222,16 @@ class ShopifyService
                 'key' => 'label_url',
                 'type' => 'url',
                 'value' => $labelUrl,
+            ];
+        }
+
+        if ($shippingCost !== null) {
+            $metafields[] = [
+                'ownerId' => $gid,
+                'namespace' => 'laar',
+                'key' => 'costo_envio',
+                'type' => 'number_decimal',
+                'value' => (string)$shippingCost,
             ];
         }
 
@@ -444,6 +454,14 @@ class ShopifyService
                 'namespace' => 'laar',
                 'key' => 'guia',
                 'type' => 'single_line_text_field',
+                'ownerType' => 'ORDER',
+                'pin' => true,
+            ],
+            [
+                'name' => 'Costo Envío LAAR',
+                'namespace' => 'laar',
+                'key' => 'costo_envio',
+                'type' => 'number_decimal',
                 'ownerType' => 'ORDER',
                 'pin' => true,
             ],
