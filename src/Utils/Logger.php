@@ -2,6 +2,7 @@
 namespace App\Utils;
 
 use Monolog\Logger as MonologLogger;
+use Monolog\Handler\RotatingFileHandler;
 use Monolog\Handler\StreamHandler;
 use Monolog\Formatter\LineFormatter;
 use App\Config;
@@ -35,7 +36,7 @@ class Logger
             mkdir($logDir, 0755, true);
         }
 
-        $handler = new StreamHandler($logDir . '/app.log', $level);
+        $handler = new RotatingFileHandler($logDir . '/app.log', 14, $level);
         $formatter = new LineFormatter(
             "[%datetime%] %channel%.%level_name%: %message% %context%\n",
             'Y-m-d H:i:s',

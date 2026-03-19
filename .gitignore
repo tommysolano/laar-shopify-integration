@@ -3,5 +3,6 @@
 /logs/
 /data/tokens.json
 /data/nonces.json
+/data/laar_token.json
 composer.phar
 composer-setup.php

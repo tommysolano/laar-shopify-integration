@@ -69,7 +69,7 @@ function registerWebhooks(string $shop, string $accessToken, $logger): array
 
     foreach ($webhooks as $webhook) {
         try {
-            $response = $client->post("https://{$shop}/admin/api/2024-01/webhooks.json", [
+            $response = $client->post("https://{$shop}/admin/api/" . Config::get('shopify.apiVersion') . "/webhooks.json", [
                 'json' => ['webhook' => $webhook],
                 'headers' => [
                     'X-Shopify-Access-Token' => $accessToken,
@@ -371,6 +371,9 @@ $router->get('/auth/status', function () {
  * Webhook handler for app uninstallation
  */
 $router->post('/auth/uninstall', function () use ($logger) {
+    if (!\App\Utils\VerifyShopifyHmac::middleware()) {
+        return;
+    }
     $body = Router::getJsonBody();
     $shop = $body['myshopify_domain'] ?? $body['shop_domain'] ?? null;
 

@@ -19,17 +19,20 @@ class LaarService
     private ?int $citiesCacheExpiry = null;
     private Client $client;
     private $logger;
+    private string $tokenCacheFile;
 
     private function __construct()
     {
         $this->logger = Logger::create('laar-service');
         $this->baseUrl = Config::get('laar.baseUrl');
+        $this->tokenCacheFile = dirname(__DIR__, 2) . '/data/laar_token.json';
         $this->client = new Client([
             'base_uri' => $this->baseUrl,
             'timeout' => 30,
             'headers' => ['Content-Type' => 'application/json'],
             'verify' => false, // cPanel environments may not have updated CA bundles
         ]);
+        $this->loadTokenFromCache();
     }
 
     public static function getInstance(): self
@@ -84,6 +87,7 @@ class LaarService
 
             $this->token = $token;
             $this->tokenExpiry = time() + (Config::get('laar.tokenExpirationMinutes') * 60);
+            $this->saveTokenToCache();
 
             $this->logger->info('Successfully authenticated with LAAR API');
             return $this->token;
@@ -111,6 +115,41 @@ class LaarService
     {
         $this->token = null;
         $this->tokenExpiry = null;
+        @unlink($this->tokenCacheFile);
+    }
+
+    /**
+     * Load cached LAAR token from file
+     */
+    private function loadTokenFromCache(): void
+    {
+        if (!file_exists($this->tokenCacheFile)) {
+            return;
+        }
+        $data = json_decode(file_get_contents($this->tokenCacheFile), true);
+        if (!is_array($data) || empty($data['token']) || empty($data['expiry'])) {
+            return;
+        }
+        if (time() < ($data['expiry'] - 60)) {
+            $this->token = $data['token'];
+            $this->tokenExpiry = $data['expiry'];
+            $this->logger->info('LAAR token loaded from cache (expires in ' . round(($data['expiry'] - time()) / 60) . ' min)');
+        }
+    }
+
+    /**
+     * Save LAAR token to cache file
+     */
+    private function saveTokenToCache(): void
+    {
+        $dir = dirname($this->tokenCacheFile);
+        if (!is_dir($dir)) {
+            mkdir($dir, 0755, true);
+        }
+        file_put_contents($this->tokenCacheFile, json_encode([
+            'token' => $this->token,
+            'expiry' => $this->tokenExpiry,
+        ]));
     }
 
     /**
