@@ -1,0 +1,16 @@
+{
+  "name": "laar/shopify-integration",
+  "description": "Integration between Shopify webhooks and LAAR Courier API for automatic shipping label generation",
+  "type": "project",
+  "require": {
+    "php": ">=7.4",
+    "vlucas/phpdotenv": "^5.6",
+    "monolog/monolog": "^2.9",
+    "guzzlehttp/guzzle": "^7.9"
+  },
+  "autoload": {
+    "psr-4": {
+      "App\\": "src/"
+    }
+  }
+}

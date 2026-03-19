@@ -1,0 +1,64 @@
+{
+  "zones": {
+    "TL": {
+      "name": "Local",
+      "base_price": 2.20,
+      "price_per_extra_kg": 0.44,
+      "included_kg": 2,
+      "min_delivery_days": 1,
+      "max_delivery_days": 2
+    },
+    "TP": {
+      "name": "Principal",
+      "base_price": 3.47,
+      "price_per_extra_kg": 0.77,
+      "included_kg": 2,
+      "min_delivery_days": 1,
+      "max_delivery_days": 3
+    },
+    "TS": {
+      "name": "Secundaria",
+      "base_price": 3.74,
+      "price_per_extra_kg": 0.83,
+      "included_kg": 2,
+      "min_delivery_days": 2,
+      "max_delivery_days": 4
+    },
+    "TE": {
+      "name": "Especial",
+      "base_price": 4.18,
+      "price_per_extra_kg": 0.99,
+      "included_kg": 2,
+      "min_delivery_days": 3,
+      "max_delivery_days": 5
+    },
+    "TO": {
+      "name": "Oriente",
+      "base_price": 5.28,
+      "price_per_extra_kg": 1.54,
+      "included_kg": 2,
+      "min_delivery_days": 3,
+      "max_delivery_days": 5
+    },
+    "TG": {
+      "name": "Galápagos",
+      "base_price": 14.30,
+      "price_per_extra_kg": 2.86,
+      "included_kg": 2,
+      "min_delivery_days": 5,
+      "max_delivery_days": 10
+    }
+  },
+  "local_zone": {
+    "cities": ["GUAYAQUIL"],
+    "special_sectors": ["LA PUNTILLA", "PUNTILLA"],
+    "special_sectors_city": "SAMBORONDON"
+  },
+  "oriente_provinces": ["NAPO", "PASTAZA", "MORONA SANTIAGO", "ZAMORA CHINCHIPE", "SUCUMBIOS", "ORELLANA"],
+  "galapagos_provinces": ["GALAPAGOS", "GALÁPAGOS"],
+  "default_zone": "TL",
+  "service_name": "LAAR Courier",
+  "currency": "USD",
+  "iva_rate": 0.15,
+  "free_shipping_threshold": 50
+}
