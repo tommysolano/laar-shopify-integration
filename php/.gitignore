@@ -1,7 +1,0 @@
-/vendor/
-/.env
-/logs/
-/data/tokens.json
-/data/nonces.json
-composer.phar
-composer-setup.php
