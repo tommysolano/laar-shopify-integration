@@ -43,12 +43,13 @@ class Config
 
             'defaults' => [
                 'serviceCode' => $_ENV['DEFAULT_SERVICE_CODE'] ?? '',
+                'originCityCode' => $_ENV['DEFAULT_ORIGIN_CITY_CODE'] ?? '',
                 'origin' => [
                     'identificacionO' => $_ENV['ORIGIN_IDENTIFICACION'] ?? '',
                     'nombreO' => $_ENV['ORIGIN_NOMBRE'] ?? '',
                     'direccionO' => $_ENV['ORIGIN_DIRECCION'] ?? '',
                     'referenciaO' => $_ENV['ORIGIN_REFERENCIA'] ?? '',
-                    'ciudadO' => $_ENV['ORIGIN_CIUDAD'] ?? '',
+                    'ciudadO' => $_ENV['ORIGIN_CIUDAD'] ?? $_ENV['DEFAULT_ORIGIN_CITY_CODE'] ?? '',
                     'telefonoO' => $_ENV['ORIGIN_TELEFONO'] ?? '',
                     'celularO' => $_ENV['ORIGIN_CELULAR'] ?? '',
                     'correoO' => $_ENV['ORIGIN_CORREO'] ?? '',
