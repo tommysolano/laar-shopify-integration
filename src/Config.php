@@ -26,12 +26,12 @@ class Config
 
             'shopify' => [
                 'storeDomain' => $_ENV['SHOPIFY_STORE_DOMAIN'] ?? '',
-                'adminToken' => $_ENV['SHOPIFY_ADMIN_TOKEN'] ?? '',
+                'adminToken' => $_ENV['SHOPIFY_ACCESS_TOKEN'] ?? '',
                 'webhookSecret' => $_ENV['SHOPIFY_WEBHOOK_SECRET'] ?? '',
                 'apiVersion' => '2025-10',
                 'clientId' => $_ENV['SHOPIFY_CLIENT_ID'] ?? '',
                 'clientSecret' => $_ENV['SHOPIFY_CLIENT_SECRET'] ?? '',
-                'appUrl' => $_ENV['APP_URL'] ?? 'https://laar-shopify-integration.onrender.com',
+                'appUrl' => $_ENV['APP_URL'] ?? 'https://laar.naturesgarden.com.ec',
             ],
 
             'laar' => [

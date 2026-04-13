@@ -94,6 +94,74 @@ $router->post('/setup-metafields', function () {
     }
 });
 
+// Fix old label URLs that still point to the old Render server
+$router->get('/fix-old-labels', function () {
+    $logger = \App\Utils\Logger::create('fix-labels');
+    try {
+        $shopifyService = \App\Services\ShopifyService::getInstance();
+        $appUrl = Config::get('shopify.appUrl');
+        $token = $shopifyService->getAccessToken();
+        $storeDomain = Config::get('shopify.storeDomain');
+        $apiVersion = Config::get('shopify.apiVersion');
+
+        $client = new \GuzzleHttp\Client(['timeout' => 30]);
+        $fixed = 0;
+        $checked = 0;
+        $errors = [];
+
+        // Fetch orders with laar-guia-created tag (these had guides created)
+        $url = "https://{$storeDomain}/admin/api/{$apiVersion}/orders.json?status=any&tag=laar-guia-created&limit=250";
+
+        $response = $client->get($url, [
+            'headers' => ['X-Shopify-Access-Token' => $token],
+        ]);
+        $data = json_decode($response->getBody()->getContents(), true);
+        $orders = $data['orders'] ?? [];
+
+        foreach ($orders as $order) {
+            $checked++;
+            $orderId = $order['id'];
+
+            try {
+                $metafields = $shopifyService->getOrderLaarMetafields($orderId);
+                if (!$metafields || !($metafields['exists'] ?? false)) {
+                    continue;
+                }
+
+                $labelUrl = $metafields['labelUrl'] ?? '';
+                $guia = $metafields['guia'] ?? '';
+
+                // Check if URL points to old server (not current appUrl)
+                if (!empty($labelUrl) && !empty($guia) && !str_starts_with($labelUrl, $appUrl)) {
+                    $newLabelUrl = "{$appUrl}/labels/{$guia}";
+                    $shopifyService->saveOrderMetafields($orderId, $guia, null, $newLabelUrl);
+                    $fixed++;
+                    $logger->info("Fixed label URL for order {$orderId}", [
+                        'guia' => $guia,
+                        'old' => $labelUrl,
+                        'new' => $newLabelUrl,
+                    ]);
+                }
+            } catch (\Exception $e) {
+                $errors[] = ['orderId' => $orderId, 'error' => $e->getMessage()];
+                $logger->error("Failed to fix order {$orderId}: " . $e->getMessage());
+            }
+        }
+
+        Router::json([
+            'success' => true,
+            'checked' => $checked,
+            'fixed' => $fixed,
+            'errors' => $errors,
+            'message' => "Checked {$checked} orders, fixed {$fixed} label URLs to use {$appUrl}",
+        ]);
+    } catch (\Exception $e) {
+        $logger->error('Fix old labels failed: ' . $e->getMessage());
+        http_response_code(500);
+        Router::json(['success' => false, 'error' => $e->getMessage()]);
+    }
+});
+
 // Include route files
 require_once __DIR__ . '/../src/Routes/auth.php';
 require_once __DIR__ . '/../src/Routes/webhooks.php';
