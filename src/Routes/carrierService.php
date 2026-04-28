@@ -84,6 +84,24 @@ function getDeliveryDate(int $daysFromNow): string
 }
 
 /**
+ * GET /carrier-service/rates
+ *
+ * Health-check endpoint. Shopify uses POST; a GET should never be sent by
+ * Shopify but is useful to verify from a browser that the endpoint is
+ * publicly reachable from the new server.
+ */
+$router->get('/carrier-service/rates', function () use ($shippingRates, $logger) {
+    Router::json([
+        'ok' => true,
+        'message' => 'Carrier service endpoint is reachable. Shopify will POST here.',
+        'service_name' => $shippingRates['service_name'] ?? null,
+        'free_shipping_threshold' => $shippingRates['free_shipping_threshold'] ?? null,
+        'iva_rate' => $shippingRates['iva_rate'] ?? null,
+        'zones' => array_keys($shippingRates['zones'] ?? []),
+    ]);
+});
+
+/**
  * POST /carrier-service/rates
  * 
  * Shopify sends rate requests here during checkout.

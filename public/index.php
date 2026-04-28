@@ -79,6 +79,42 @@ $router->post('/register-carrier', function () {
     }
 });
 
+// List currently registered carrier services in the store
+$router->get('/carrier-services', function () {
+    try {
+        $shopifyService = \App\Services\ShopifyService::getInstance();
+        $list = $shopifyService->listCarrierServices();
+        $expectedCallback = \App\Config::get('shopify.appUrl') . '/carrier-service/rates';
+        Router::json([
+            'success' => true,
+            'expectedCallbackUrl' => $expectedCallback,
+            'carrierServices' => $list,
+        ]);
+    } catch (\Exception $e) {
+        http_response_code(500);
+        Router::json(['success' => false, 'error' => $e->getMessage()]);
+    }
+});
+
+// Delete a carrier service by id (use to manually remove a stale one)
+$router->post('/carrier-services/delete', function () {
+    try {
+        $body = \App\Router::getJsonBody();
+        $id = (int)($body['id'] ?? 0);
+        if ($id <= 0) {
+            http_response_code(400);
+            Router::json(['success' => false, 'error' => 'Missing id']);
+            return;
+        }
+        $shopifyService = \App\Services\ShopifyService::getInstance();
+        $shopifyService->deleteCarrierService($id);
+        Router::json(['success' => true, 'deleted' => $id]);
+    } catch (\Exception $e) {
+        http_response_code(500);
+        Router::json(['success' => false, 'error' => $e->getMessage()]);
+    }
+});
+
 // Setup metafields endpoint
 $router->post('/setup-metafields', function () {
     try {

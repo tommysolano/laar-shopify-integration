@@ -517,37 +517,91 @@ class ShopifyService
     }
 
     /**
-     * Register a CarrierService with Shopify for dynamic shipping rates
+     * List all CarrierServices currently registered in the store
+     */
+    public function listCarrierServices(): array
+    {
+        $token = $this->getAccessToken();
+        $response = $this->client->get("{$this->restBaseUrl}/carrier_services.json", [
+            'headers' => ['X-Shopify-Access-Token' => $token],
+        ]);
+        $data = json_decode($response->getBody()->getContents(), true);
+        return $data['carrier_services'] ?? [];
+    }
+
+    /**
+     * Delete a CarrierService by id
+     */
+    public function deleteCarrierService(int $id): void
+    {
+        $token = $this->getAccessToken();
+        $this->client->delete("{$this->restBaseUrl}/carrier_services/{$id}.json", [
+            'headers' => ['X-Shopify-Access-Token' => $token],
+        ]);
+        $this->logger->info('CarrierService deleted', ['id' => $id]);
+    }
+
+    /**
+     * Register a CarrierService with Shopify for dynamic shipping rates.
+     * Removes any stale CarrierService entries that point to a different
+     * callback_url (e.g. from a previous deployment) so Shopify always hits
+     * the current server.
      */
     public function registerCarrierService(): array
     {
         $token = $this->getAccessToken();
         $callbackUrl = Config::get('shopify.appUrl') . '/carrier-service/rates';
 
-        // First check if carrier service already exists
+        $existingMatch = null;
+        $deleted = [];
+
         try {
             $response = $this->client->get("{$this->restBaseUrl}/carrier_services.json", [
                 'headers' => ['X-Shopify-Access-Token' => $token],
             ]);
-
             $data = json_decode($response->getBody()->getContents(), true);
-            $existing = null;
-            foreach ($data['carrier_services'] ?? [] as $cs) {
-                if ($cs['callback_url'] === $callbackUrl) {
-                    $existing = $cs;
-                    break;
-                }
-            }
 
-            if ($existing) {
-                $this->logger->info('CarrierService already registered', ['id' => $existing['id']]);
-                return $existing;
+            foreach ($data['carrier_services'] ?? [] as $cs) {
+                $isLaar = stripos($cs['name'] ?? '', 'laar') !== false
+                    || stripos($cs['callback_url'] ?? '', '/carrier-service/rates') !== false;
+
+                if (!$isLaar) {
+                    continue;
+                }
+
+                if (($cs['callback_url'] ?? '') === $callbackUrl && $existingMatch === null) {
+                    $existingMatch = $cs;
+                    continue;
+                }
+
+                // Stale LAAR carrier service pointing to a different URL → delete
+                try {
+                    $this->deleteCarrierService((int)$cs['id']);
+                    $deleted[] = [
+                        'id' => $cs['id'],
+                        'name' => $cs['name'] ?? '',
+                        'callback_url' => $cs['callback_url'] ?? '',
+                    ];
+                } catch (\Exception $delErr) {
+                    $this->logger->warning('Could not delete stale CarrierService', [
+                        'id' => $cs['id'] ?? null,
+                        'error' => $delErr->getMessage(),
+                    ]);
+                }
             }
         } catch (\Exception $e) {
             $this->logger->warning('Could not list carrier services: ' . $e->getMessage());
         }
 
-        // Register new carrier service
+        if ($existingMatch) {
+            $this->logger->info('CarrierService already registered', [
+                'id' => $existingMatch['id'],
+                'deleted_stale' => $deleted,
+            ]);
+            $existingMatch['deleted_stale'] = $deleted;
+            return $existingMatch;
+        }
+
         $response = $this->client->post("{$this->restBaseUrl}/carrier_services.json", [
             'json' => [
                 'carrier_service' => [
@@ -564,8 +618,11 @@ class ShopifyService
         $this->logger->info('CarrierService registered', [
             'id' => $data['carrier_service']['id'] ?? null,
             'callbackUrl' => $callbackUrl,
+            'deleted_stale' => $deleted,
         ]);
 
-        return $data['carrier_service'];
+        $result = $data['carrier_service'];
+        $result['deleted_stale'] = $deleted;
+        return $result;
     }
 }
