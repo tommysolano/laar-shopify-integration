@@ -342,9 +342,17 @@ class LaarService
             throw new \RuntimeException('Missing customer name in order');
         }
 
-        // Get phone
-        $rawPhone = $shipping['phone'] ?? $customer['phone'] ?? '';
-        $phone = substr(preg_replace('/[^0-9]/', '', $rawPhone), 0, 10);
+        // Get and normalize Ecuador phone numbers.
+        // Shopify can send values like +593 99 999 9999; LAAR usually expects 09XXXXXXXX.
+        $rawPhone = $shipping['phone'] ?? $billing['phone'] ?? $customer['phone'] ?? '';
+        $phoneDigits = preg_replace('/[^0-9]/', '', $rawPhone);
+        if (str_starts_with($phoneDigits, '593') && strlen($phoneDigits) >= 12) {
+            $phone = '0' . substr($phoneDigits, 3, 9);
+        } elseif (str_starts_with($phoneDigits, '09') && strlen($phoneDigits) >= 10) {
+            $phone = substr($phoneDigits, 0, 10);
+        } else {
+            $phone = substr($phoneDigits, 0, 10);
+        }
         if (empty($phone) || strlen($phone) < 7) {
             throw new \RuntimeException("Missing or invalid phone number in order. Raw phone: \"{$rawPhone}\"");
         }

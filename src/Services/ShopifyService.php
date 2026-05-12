@@ -142,6 +142,10 @@ class ShopifyService
                     id
                     value
                 }
+                metafieldCostoEnvio: metafield(namespace: "laar", key: "costo_envio") {
+                    id
+                    value
+                }
             }
         }
         GRAPHQL;
@@ -160,6 +164,7 @@ class ShopifyService
                     'guia' => $order['metafield']['value'],
                     'pdfUrl' => $order['metafieldPdfUrl']['value'] ?? null,
                     'labelUrl' => $order['metafieldLabelUrl']['value'] ?? null,
+                    'costoEnvio' => $order['metafieldCostoEnvio']['value'] ?? null,
                     'exists' => true,
                 ];
             }
@@ -334,14 +339,15 @@ class ShopifyService
         }
 
         $mutation = <<<'GRAPHQL'
-        mutation fulfillmentCreateV2($fulfillment: FulfillmentV2Input!) {
-            fulfillmentCreateV2(fulfillment: $fulfillment) {
+        mutation fulfillmentCreate($fulfillment: FulfillmentInput!) {
+            fulfillmentCreate(fulfillment: $fulfillment) {
                 fulfillment {
                     id
                     status
                     trackingInfo {
                         number
                         url
+                        company
                     }
                 }
                 userErrors {
@@ -357,6 +363,7 @@ class ShopifyService
             'notifyCustomer' => true,
             'trackingInfo' => [
                 'number' => $trackingNumber,
+                'company' => 'LAAR Courier',
             ],
         ];
 
@@ -367,8 +374,8 @@ class ShopifyService
         try {
             $data = $this->graphql($mutation, ['fulfillment' => $fulfillmentInput]);
 
-            if (!empty($data['fulfillmentCreateV2']['userErrors'])) {
-                $errors = $data['fulfillmentCreateV2']['userErrors'];
+            if (!empty($data['fulfillmentCreate']['userErrors'])) {
+                $errors = $data['fulfillmentCreate']['userErrors'];
                 $this->logger->error('Fulfillment creation errors', $errors);
 
                 // Check if it's because items are already fulfilled
@@ -383,7 +390,7 @@ class ShopifyService
                 throw new \RuntimeException('Failed to create fulfillment: ' . ($errors[0]['message'] ?? 'Unknown'));
             }
 
-            $fulfillment = $data['fulfillmentCreateV2']['fulfillment'] ?? null;
+            $fulfillment = $data['fulfillmentCreate']['fulfillment'] ?? null;
             $this->logger->info('Fulfillment created successfully', [
                 'orderId' => $orderId,
                 'fulfillmentId' => $fulfillment['id'] ?? null,
@@ -517,91 +524,37 @@ class ShopifyService
     }
 
     /**
-     * List all CarrierServices currently registered in the store
-     */
-    public function listCarrierServices(): array
-    {
-        $token = $this->getAccessToken();
-        $response = $this->client->get("{$this->restBaseUrl}/carrier_services.json", [
-            'headers' => ['X-Shopify-Access-Token' => $token],
-        ]);
-        $data = json_decode($response->getBody()->getContents(), true);
-        return $data['carrier_services'] ?? [];
-    }
-
-    /**
-     * Delete a CarrierService by id
-     */
-    public function deleteCarrierService(int $id): void
-    {
-        $token = $this->getAccessToken();
-        $this->client->delete("{$this->restBaseUrl}/carrier_services/{$id}.json", [
-            'headers' => ['X-Shopify-Access-Token' => $token],
-        ]);
-        $this->logger->info('CarrierService deleted', ['id' => $id]);
-    }
-
-    /**
-     * Register a CarrierService with Shopify for dynamic shipping rates.
-     * Removes any stale CarrierService entries that point to a different
-     * callback_url (e.g. from a previous deployment) so Shopify always hits
-     * the current server.
+     * Register a CarrierService with Shopify for dynamic shipping rates
      */
     public function registerCarrierService(): array
     {
         $token = $this->getAccessToken();
         $callbackUrl = Config::get('shopify.appUrl') . '/carrier-service/rates';
 
-        $existingMatch = null;
-        $deleted = [];
-
+        // First check if carrier service already exists
         try {
             $response = $this->client->get("{$this->restBaseUrl}/carrier_services.json", [
                 'headers' => ['X-Shopify-Access-Token' => $token],
             ]);
+
             $data = json_decode($response->getBody()->getContents(), true);
-
+            $existing = null;
             foreach ($data['carrier_services'] ?? [] as $cs) {
-                $isLaar = stripos($cs['name'] ?? '', 'laar') !== false
-                    || stripos($cs['callback_url'] ?? '', '/carrier-service/rates') !== false;
-
-                if (!$isLaar) {
-                    continue;
+                if ($cs['callback_url'] === $callbackUrl) {
+                    $existing = $cs;
+                    break;
                 }
+            }
 
-                if (($cs['callback_url'] ?? '') === $callbackUrl && $existingMatch === null) {
-                    $existingMatch = $cs;
-                    continue;
-                }
-
-                // Stale LAAR carrier service pointing to a different URL → delete
-                try {
-                    $this->deleteCarrierService((int)$cs['id']);
-                    $deleted[] = [
-                        'id' => $cs['id'],
-                        'name' => $cs['name'] ?? '',
-                        'callback_url' => $cs['callback_url'] ?? '',
-                    ];
-                } catch (\Exception $delErr) {
-                    $this->logger->warning('Could not delete stale CarrierService', [
-                        'id' => $cs['id'] ?? null,
-                        'error' => $delErr->getMessage(),
-                    ]);
-                }
+            if ($existing) {
+                $this->logger->info('CarrierService already registered', ['id' => $existing['id']]);
+                return $existing;
             }
         } catch (\Exception $e) {
             $this->logger->warning('Could not list carrier services: ' . $e->getMessage());
         }
 
-        if ($existingMatch) {
-            $this->logger->info('CarrierService already registered', [
-                'id' => $existingMatch['id'],
-                'deleted_stale' => $deleted,
-            ]);
-            $existingMatch['deleted_stale'] = $deleted;
-            return $existingMatch;
-        }
-
+        // Register new carrier service
         $response = $this->client->post("{$this->restBaseUrl}/carrier_services.json", [
             'json' => [
                 'carrier_service' => [
@@ -618,11 +571,8 @@ class ShopifyService
         $this->logger->info('CarrierService registered', [
             'id' => $data['carrier_service']['id'] ?? null,
             'callbackUrl' => $callbackUrl,
-            'deleted_stale' => $deleted,
         ]);
 
-        $result = $data['carrier_service'];
-        $result['deleted_stale'] = $deleted;
-        return $result;
+        return $data['carrier_service'];
     }
 }

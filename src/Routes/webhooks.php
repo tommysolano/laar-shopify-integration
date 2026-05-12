@@ -106,7 +106,7 @@ $router->post('/webhooks/orders_paid', function () use ($logger, $shippingRates)
     }
 
     // Parse order from raw body
-    $rawBody = file_get_contents('php://input') ?: '';
+    $rawBody = VerifyShopifyHmac::getRawBody();
     $order = json_decode($rawBody, true);
 
     if (!$order) {
@@ -142,15 +142,48 @@ $router->post('/webhooks/orders_paid', function () use ($logger, $shippingRates)
         $existingMetafields = $shopifyService->getOrderLaarMetafields($orderId);
 
         if ($existingMetafields && ($existingMetafields['exists'] ?? false)) {
-            $logger->info('Order already has LAAR guide, skipping', [
+            $existingGuia = $existingMetafields['guia'] ?? '';
+            $existingLabelUrl = $existingMetafields['labelUrl'] ?? (Config::get('shopify.appUrl') . "/labels/{$existingGuia}");
+
+            // Do not create a duplicate guide, but repair missing store-visible data.
+            $costInfo = calculateRealShippingCost($order, $shippingRates, $logger);
+            $shippingCost = $costInfo['cost'] ?? null;
+
+            if (empty($existingMetafields['costoEnvio']) || empty($existingMetafields['labelUrl'])) {
+                $logger->info('Order already has LAAR guide; repairing missing LAAR metafields', [
+                    'orderId' => $orderId,
+                    'existingGuia' => $existingGuia,
+                    'shippingCost' => $shippingCost,
+                ]);
+                $shopifyService->saveOrderMetafields(
+                    $orderId,
+                    $existingGuia,
+                    $existingMetafields['pdfUrl'] ?? null,
+                    $existingLabelUrl,
+                    $shippingCost
+                );
+            }
+
+            // If the order is still unfulfilled, try to prepare it again with the existing guide.
+            try {
+                $trackingUrl = "https://fenix.laarcourier.com/Tracking/?guia={$existingGuia}";
+                $shopifyService->createFulfillment($orderId, $existingGuia, $trackingUrl);
+            } catch (\Exception $fulfillmentError) {
+                $logger->warning('Existing guide found, but fulfillment repair failed: ' . $fulfillmentError->getMessage(), [
+                    'orderId' => $orderId,
+                    'existingGuia' => $existingGuia,
+                ]);
+            }
+
+            $logger->info('Order already has LAAR guide, skipped duplicate guide creation', [
                 'orderId' => $orderId,
-                'existingGuia' => $existingMetafields['guia'] ?? '',
+                'existingGuia' => $existingGuia,
             ]);
             Router::json([
                 'ok' => true,
                 'skipped' => true,
-                'message' => 'Guide already exists',
-                'guia' => $existingMetafields['guia'] ?? '',
+                'message' => 'Guide already exists; missing data repaired when possible',
+                'guia' => $existingGuia,
             ]);
             return;
         }
@@ -259,7 +292,7 @@ $router->post('/webhooks/test', function () use ($logger) {
 
     $logger->info('Test webhook received');
 
-    $rawBody = file_get_contents('php://input') ?: '';
+    $rawBody = VerifyShopifyHmac::getRawBody();
     $body = json_decode($rawBody, true) ?: [];
 
     Router::json([

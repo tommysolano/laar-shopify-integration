@@ -8,12 +8,28 @@ use App\Config;
  */
 class VerifyShopifyHmac
 {
+    private static ?string $rawBodyCache = null;
+
     /**
-     * Verify Shopify webhook HMAC signature
-     *
-     * @param string $rawBody Raw request body
-     * @param string $hmacHeader X-Shopify-Hmac-Sha256 header value
-     * @return bool Whether the signature is valid
+     * Get raw request body only once and reuse it.
+     */
+    public static function getRawBody(): string
+    {
+        if (self::$rawBodyCache === null) {
+            self::$rawBodyCache = file_get_contents('php://input') ?: '';
+        }
+
+        return self::$rawBodyCache;
+    }
+
+    /**
+     * Verify Shopify webhook HMAC signature.
+     * 
+     * Tries both:
+     * - SHOPIFY_CLIENT_SECRET
+     * - SHOPIFY_WEBHOOK_SECRET
+     * 
+     * This avoids failures if the webhook was registered differently.
      */
     public static function verify(string $rawBody, string $hmacHeader): bool
     {
@@ -21,35 +37,49 @@ class VerifyShopifyHmac
             return false;
         }
 
-        $secret = Config::get('shopify.webhookSecret') ?: Config::get('shopify.clientSecret');
-        if (empty($secret)) {
-            throw new \RuntimeException('No webhook secret configured (SHOPIFY_WEBHOOK_SECRET or SHOPIFY_CLIENT_SECRET)');
+        $secrets = [];
+
+        $clientSecret = Config::get('shopify.clientSecret');
+        $webhookSecret = Config::get('shopify.webhookSecret');
+
+        if (!empty($clientSecret)) {
+            $secrets[] = $clientSecret;
         }
 
-        $calculatedHmac = base64_encode(
-            hash_hmac('sha256', $rawBody, $secret, true)
-        );
+        if (!empty($webhookSecret) && $webhookSecret !== $clientSecret) {
+            $secrets[] = $webhookSecret;
+        }
 
-        return hash_equals($calculatedHmac, $hmacHeader);
+        if (empty($secrets)) {
+            throw new \RuntimeException('No Shopify secret configured. Check SHOPIFY_CLIENT_SECRET or SHOPIFY_WEBHOOK_SECRET.');
+        }
+
+        foreach ($secrets as $secret) {
+            $calculatedHmac = base64_encode(
+                hash_hmac('sha256', $rawBody, $secret, true)
+            );
+
+            if (hash_equals($calculatedHmac, $hmacHeader)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
-     * Middleware-style verification for webhook routes
-     * Returns true if valid, sends 401 and returns false if invalid
-     *
-     * @return bool
+     * Middleware-style verification for webhook routes.
      */
     public static function middleware(): bool
     {
         $hmacHeader = $_SERVER['HTTP_X_SHOPIFY_HMAC_SHA256'] ?? '';
 
-        // Allow skipping HMAC in development mode if configured
         if (Config::get('isDevelopment') && Config::get('allowInsecureWebhooks')) {
-            error_log('WARNING: Skipping HMAC verification (ALLOW_INSECURE_WEBHOOKS=true)');
+            error_log('WARNING: Skipping HMAC verification because ALLOW_INSECURE_WEBHOOKS=true');
             return true;
         }
 
-        $rawBody = file_get_contents('php://input') ?: '';
+        $rawBody = self::getRawBody();
 
         if (!self::verify($rawBody, $hmacHeader)) {
             error_log('Invalid HMAC signature');
@@ -63,11 +93,7 @@ class VerifyShopifyHmac
     }
 
     /**
-     * Generate HMAC for testing purposes
-     *
-     * @param string $body JSON body string
-     * @param string $secret Webhook secret
-     * @return string Base64 encoded HMAC
+     * Generate HMAC for testing purposes.
      */
     public static function generateHmac(string $body, string $secret): string
     {
