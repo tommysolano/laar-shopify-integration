@@ -203,6 +203,7 @@ require_once __DIR__ . '/../src/Routes/auth.php';
 require_once __DIR__ . '/../src/Routes/webhooks.php';
 require_once __DIR__ . '/../src/Routes/carrierService.php';
 require_once __DIR__ . '/../src/Routes/labels.php';
+require_once __DIR__ . '/../src/Routes/admin.php';
 
 // Dispatch the request
 $router->dispatch();
